@@ -195,6 +195,21 @@ export async function ship(rawArgs: string[]): Promise<number> {
     return 1;
   }
 
+  const lastDeployPath = path.resolve(projectRoot, ".bowerbird", "last_deploy.txt");
+  try {
+    const lastDeploy = await readFile(lastDeployPath, "utf8");
+    const urlLine = lastDeploy
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("url="));
+    const url = urlLine?.slice(4).trim();
+    if (url) {
+      ok(`Ship complete: ${url}`);
+      return 0;
+    }
+  } catch {
+    // Keep default completion message when deploy metadata is unavailable.
+  }
+
   ok("Ship complete");
   return 0;
 }
