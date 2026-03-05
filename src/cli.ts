@@ -1,13 +1,19 @@
 #!/usr/bin/env node
 import { doctor } from "./recipes/doctor";
 import { deploy } from "./recipes/deploy";
+import { fixDeploy } from "./recipes/fixDeploy";
+import { init } from "./recipes/init";
+import { ship } from "./recipes/ship";
 
 function printHelp(): void {
   console.log("Usage: bowerbird <command> [options]");
   console.log("");
   console.log("Commands:");
   console.log("  doctor        Run environment and tooling diagnostics");
+  console.log("  init          Create starter BowerBird setup files");
   console.log("  deploy        Commit/push and trigger Vercel deploy");
+  console.log("  fix-deploy    Deploy with automatic error brief on failure");
+  console.log("  ship          Run doctor, build, then deploy");
   console.log("");
   console.log("Options:");
   console.log("  --config      TODO: custom config path override");
@@ -29,8 +35,26 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "init") {
+    const code = await init();
+    process.exitCode = code;
+    return;
+  }
+
   if (command === "deploy") {
     const code = await deploy(args.slice(1));
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "fix-deploy" || command === "fixdeploy") {
+    const code = await fixDeploy(args.slice(1));
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "ship") {
+    const code = await ship(args.slice(1));
     process.exitCode = code;
     return;
   }

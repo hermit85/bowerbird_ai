@@ -1,50 +1,69 @@
 $ git status --porcelain
 exitCode: 0
 stdout:
+ M dist/recipes/deploy.js
+stderr:
+(empty)
+durationMs: 47
+
+$ git add .
+exitCode: 0
+stdout:
 (empty)
 stderr:
 (empty)
-durationMs: 42
+durationMs: 18
+
+$ git commit -m chore: deploy
+exitCode: 0
+stdout:
+[main 40a40ea] chore: deploy
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+stderr:
+(empty)
+durationMs: 25
 
 $ git push
 exitCode: 0
 stdout:
 (empty)
 stderr:
-Everything up-to-date
-durationMs: 661
+To https://github.com/hermit85/bowerbird_ai.git
+   ab96a7e..40a40ea  main -> main
+durationMs: 1030
 
-$ vercel deploy --confirm
+$ vercel deploy --yes
 exitCode: 0
 stdout:
-https://bowerbird-8e7hhwu4s-hermit85s-projects.vercel.app
+https://bowerbird-1ojdxtyug-hermit85s-projects.vercel.app
 stderr:
-WARN! `--confirm` is deprecated, please use `--yes` instead
 Retrieving project…
 Deploying hermit85s-projects/bowerbird_ai
-Uploading [--------------------] (0.0B/250B)
-Uploading [====================] (250.0B/250B)
-Inspect: https://vercel.com/hermit85s-projects/bowerbird_ai/2ftBhLDQumNCqqN9oKfHQyV21gBH [4s]
-Preview: https://bowerbird-8e7hhwu4s-hermit85s-projects.vercel.app [4s]
+Uploading [--------------------] (0.0B/14.1KB)
+Uploading [===========---------] (7.8KB/14.1KB)
+Uploading [===========---------] (7.9KB/14.1KB)
+Uploading [====================] (14.1KB/14.1KB)
+Inspect: https://vercel.com/hermit85s-projects/bowerbird_ai/HSbBcJfkTWGr3npc6B12esVT5URF [3s]
+Preview: https://bowerbird-1ojdxtyug-hermit85s-projects.vercel.app [3s]
 Building...
 Building...
 Building: Running build in Washington, D.C., USA (East) – iad1
 Building: Build machine configuration: 2 cores, 8 GB
 Building: Retrieving list of deployment files...
-Building: Previous build caches not available.
-Building: Downloading 49 deployment files...
+Building: Downloading 51 deployment files...
+Building: Restored build cache from previous deployment (2ftBhLDQumNCqqN9oKfHQyV21gBH)
 Building: Running "vercel build"
 Building: Vercel CLI 50.27.1
 Building: Installing dependencies...
-Building: added 46 packages in 2s
+Building: up to date in 659ms
 Building: 32 packages are looking for funding
 Building: run `npm fund` for details
 Building: Running "npm run build"
 Building: > bowerbird_ai@0.0.1 build
 Building: > tsc -p .
-Building: Build Completed in /vercel/output [4s]
+Building: Build Completed in /vercel/output [2s]
 Building: Deploying outputs...
-[2K[1A[2K[GPreview: https://bowerbird-8e7hhwu4s-hermit85s-projects.vercel.app [18s]
+[2K[1A[2K[GPreview: https://bowerbird-1ojdxtyug-hermit85s-projects.vercel.app [23s]
 Completing...
 To deploy to production (bowerbirdai.vercel.app), run `vercel --prod`
-durationMs: 19792
+durationMs: 31111
