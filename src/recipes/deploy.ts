@@ -60,12 +60,12 @@ function extractDeploymentUrl(output: string): string | null {
     /^https:\/\/[a-zA-Z0-9.-]+\.vercel\.app(?:\/\S*)?$/.test(token),
   );
   if (vercelTokens.length > 0) {
-    return vercelTokens[vercelTokens.length - 1];
+    return vercelTokens[vercelTokens.length - 1] ?? null;
   }
 
   const genericUrls = tokens.filter((token) => /^https?:\/\/\S+$/.test(token));
   if (genericUrls.length > 0) {
-    return genericUrls[genericUrls.length - 1];
+    return genericUrls[genericUrls.length - 1] ?? null;
   }
 
   return null;
