@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { doctor } from "./recipes/doctor";
+import { deploy } from "./recipes/deploy";
 
 function printHelp(): void {
   console.log("Usage: bowerbird <command> [options]");
   console.log("");
   console.log("Commands:");
   console.log("  doctor        Run environment and tooling diagnostics");
+  console.log("  deploy        Commit/push and trigger Vercel deploy");
   console.log("");
   console.log("Options:");
   console.log("  --config      TODO: custom config path override");
@@ -23,6 +25,12 @@ async function main(): Promise<void> {
 
   if (command === "doctor") {
     const code = await doctor();
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "deploy") {
+    const code = await deploy(args.slice(1));
     process.exitCode = code;
     return;
   }

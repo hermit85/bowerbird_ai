@@ -1,0 +1,19 @@
+{
+  "projectRoot": ".",
+  "allowCommands": [
+    "git",
+    "node",
+    "npm",
+    "pnpm",
+    "npx",
+    "vercel",
+    "supabase"
+  ],
+  "blockedPatterns": [
+    "rm -rf",
+    "sudo",
+    "curl |",
+    "bash -c",
+    "sh -c"
+  ]
+}

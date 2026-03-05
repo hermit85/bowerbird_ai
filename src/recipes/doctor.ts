@@ -127,13 +127,14 @@ export async function doctor(): Promise<number> {
       if (loginHelp.exitCode === 0) {
         warn(
           "Supabase auth status is not directly verified",
-          "Run `supabase login` if commands later require authentication.",
+          "Run `supabase login` if commands later require authentication. If you've run it recently, OK to ignore for now.",
         );
         mark(summary, "warn");
       } else {
         warn(
           "Supabase auth may be required",
-          loginHelp.stderr.trim() || "Run `supabase login` if needed.",
+          loginHelp.stderr.trim() ||
+            "Run `supabase login` if needed. If you've run it recently, OK to ignore for now.",
         );
         mark(summary, "warn");
       }
