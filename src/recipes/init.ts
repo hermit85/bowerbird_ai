@@ -1,4 +1,4 @@
-import { writeFile, access } from "node:fs/promises";
+import { writeFile, access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { ok, warn } from "../core/reporter";
 
@@ -36,6 +36,36 @@ export async function init(): Promise<number> {
   } catch {
     await writeFile(envExamplePath, "API_KEY=\nDATABASE_URL=\n");
     ok("Created .env.example");
+  }
+
+  const gitignorePath = path.resolve(cwd, ".gitignore");
+  const recommendedRules = [
+    "node_modules/",
+    "dist/",
+    ".env",
+    ".bowerbird/",
+    ".vercel",
+    ".DS_Store",
+  ];
+
+  try {
+    await access(gitignorePath);
+    const currentContent = await readFile(gitignorePath, "utf8");
+    const existingLines = new Set(currentContent.split(/\r?\n/));
+    const missingRules = recommendedRules.filter((rule) => !existingLines.has(rule));
+
+    if (missingRules.length > 0) {
+      const separator = currentContent.endsWith("\n") || currentContent.length === 0 ? "" : "\n";
+      const appended = `${separator}${missingRules.join("\n")}\n`;
+      await writeFile(gitignorePath, `${currentContent}${appended}`);
+      ok("Updated .gitignore with missing rules");
+    } else {
+      ok(".gitignore already contains recommended rules");
+    }
+  } catch {
+    const content = `# BowerBird managed\n${recommendedRules.join("\n")}\n`;
+    await writeFile(gitignorePath, content);
+    ok("Created .gitignore with recommended rules");
   }
 
   try {
