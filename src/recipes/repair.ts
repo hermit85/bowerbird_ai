@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
 import { classifyError } from "../core/errorClassifier";
@@ -57,10 +57,26 @@ export async function repair(rawArgs: string[] = []): Promise<number> {
   const parsed = parseDeployLog(logText);
   const classified = classifyError(parsed);
   const prompt = buildRepairPrompt(classified, parsed);
+  const metaDir = path.resolve(projectRoot, ".bowerbird");
 
   let promptPath: string;
   try {
     promptPath = await writeRepairPrompt(projectRoot, prompt);
+    await mkdir(metaDir, { recursive: true });
+    await writeFile(
+      path.resolve(metaDir, "last_error.json"),
+      `${JSON.stringify(
+        {
+          type: classified.type,
+          message: classified.message,
+          file: classified.file,
+          line: classified.line,
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
   } catch (error) {
     fail(
       "Failed to write .bowerbird/repair_prompt.md",

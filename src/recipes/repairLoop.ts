@@ -93,15 +93,23 @@ async function waitForPatchUpdate(
   timeoutSeconds: number,
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutSeconds * 1000;
+  let lastAnnouncedBucket = -1;
 
   while (Date.now() < deadline) {
+    const remainingSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    const bucket = Math.floor(remainingSeconds / 10);
+    if (bucket !== lastAnnouncedBucket) {
+      lastAnnouncedBucket = bucket;
+      ok(`Remaining wait time: ${remainingSeconds}s`);
+    }
+
     const currentMtime = await readMtimeMs(patchPath);
     if (currentMtime !== null) {
       if (baselineMtimeMs === null || currentMtime > baselineMtimeMs) {
         return true;
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   return false;
@@ -149,13 +157,43 @@ async function restoreStashIfNeeded(state: StashState): Promise<boolean> {
   return true;
 }
 
+async function sanitizePatchFile(projectRoot: string): Promise<boolean> {
+  const metaDir = path.resolve(projectRoot, ".bowerbird");
+  const rawPatchPath = path.resolve(metaDir, "repair_patch.diff");
+  const sanitizedPatchPath = path.resolve(metaDir, "repair_patch.sanitized.diff");
+
+  let raw: string;
+  try {
+    raw = await readFile(rawPatchPath, "utf8");
+  } catch {
+    return false;
+  }
+
+  const noFences = raw
+    .split(/\r?\n/)
+    .filter((line) => !line.trim().startsWith("```"))
+    .join("\n");
+  const lines = noFences.split(/\r?\n/);
+  let startIndex = lines.findIndex((line) => line.startsWith("diff --git "));
+  if (startIndex === -1) {
+    startIndex = lines.findIndex((line) => line.startsWith("--- "));
+  }
+  if (startIndex === -1) {
+    return false;
+  }
+
+  const sanitized = `${lines.slice(startIndex).join("\n").trim()}\n`;
+  await writeFile(sanitizedPatchPath, sanitized, "utf8");
+  ok("Sanitized patch saved to .bowerbird/repair_patch.sanitized.diff");
+  return true;
+}
+
 async function readErrorType(projectRoot: string): Promise<string | undefined> {
   try {
-    const promptPath = path.resolve(projectRoot, ".bowerbird", "repair_prompt.md");
-    const promptText = await readFile(promptPath, "utf8");
-    const firstLine = promptText.split(/\r?\n/)[0] ?? "";
-    const match = firstLine.match(/error type:\s*([A-Z_]+)/i);
-    return match?.[1]?.toUpperCase();
+    const errorJsonPath = path.resolve(projectRoot, ".bowerbird", "last_error.json");
+    const raw = await readFile(errorJsonPath, "utf8");
+    const parsed = JSON.parse(raw) as { type?: string };
+    return parsed.type;
   } catch {
     return undefined;
   }
@@ -233,7 +271,8 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
     entry.errorType = await readErrorType(projectRoot);
 
     const baselineMtime = await readMtimeMs(patchPath);
-    ok(`Waiting for .bowerbird/repair_patch.diff (timeout: ${options.watchTimeoutSeconds}s)`);
+    ok("Waiting for patch file: .bowerbird/repair_patch.diff");
+    ok(`Watch timeout: ${options.watchTimeoutSeconds}s`);
     const patchDetected = await waitForPatchUpdate(
       patchPath,
       baselineMtime,
@@ -247,6 +286,15 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
       await saveHistory(projectRoot, history);
       fail("Timed out waiting for .bowerbird/repair_patch.diff.");
       warn("Next step: generate a unified diff from your AI tool and save it to .bowerbird/repair_patch.diff.");
+      return 1;
+    }
+
+    const sanitized = await sanitizePatchFile(projectRoot);
+    if (!sanitized) {
+      entry.finishedAt = new Date().toISOString();
+      await saveHistory(projectRoot, history);
+      fail("Patch file is not a valid unified diff.");
+      warn("Ensure .bowerbird/repair_patch.diff contains a valid diff starting with 'diff --git' or '--- '.");
       return 1;
     }
 

@@ -28,14 +28,27 @@ export async function applyPatch(): Promise<number> {
 
   const metaDir = path.resolve(projectRoot, ".bowerbird");
   const patchPath = path.resolve(metaDir, "repair_patch.diff");
+  const sanitizedPatchPath = path.resolve(metaDir, "repair_patch.sanitized.diff");
   const logPath = path.resolve(metaDir, "last_apply_patch_log.txt");
 
+  let hasPatch = true;
   try {
     await access(patchPath);
   } catch {
+    hasPatch = false;
+  }
+
+  let hasSanitizedPatch = true;
+  try {
+    await access(sanitizedPatchPath);
+  } catch {
+    hasSanitizedPatch = false;
+  }
+
+  if (!hasPatch && !hasSanitizedPatch) {
     await mkdir(metaDir, { recursive: true });
-    await writeFile(logPath, "repair_patch.diff not found\n", "utf8");
-    warn("No .bowerbird/repair_patch.diff found.");
+    await writeFile(logPath, "repair_patch.diff or repair_patch.sanitized.diff not found\n", "utf8");
+    warn("No patch file found in .bowerbird/.");
     return 1;
   }
 

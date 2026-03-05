@@ -1,3 +1,4 @@
+import { access } from "node:fs/promises";
 import type { RunResult } from "./runner";
 import { run } from "./runner";
 
@@ -18,10 +19,20 @@ async function runGit(args: string[]): Promise<PatchCommandResult> {
   return { cmd: "git", args, result };
 }
 
+async function resolvePatchPath(): Promise<string> {
+  try {
+    await access(".bowerbird/repair_patch.sanitized.diff");
+    return ".bowerbird/repair_patch.sanitized.diff";
+  } catch {
+    return ".bowerbird/repair_patch.diff";
+  }
+}
+
 export async function applyRepairPatch(): Promise<PatchApplyResult> {
   const commands: PatchCommandResult[] = [];
+  const patchPath = await resolvePatchPath();
 
-  const apply = await runGit(["apply", ".bowerbird/repair_patch.diff"]);
+  const apply = await runGit(["apply", patchPath]);
   commands.push(apply);
   if (apply.result.exitCode !== 0) {
     return {
