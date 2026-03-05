@@ -1,1 +1,6 @@
 .vercel
+node_modules/
+dist/
+.env
+.bowerbird/
+.DS_Store
