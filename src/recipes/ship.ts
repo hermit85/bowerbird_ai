@@ -182,7 +182,6 @@ export async function ship(rawArgs: string[]): Promise<number> {
       return 1;
     }
   }
-const __force_error: number = "nope";
   const deployCode = await deploy(forwardArgs);
   if (deployCode !== 0) {
     fail("Deploy failed");
