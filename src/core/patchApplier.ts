@@ -69,6 +69,23 @@ export async function applyRepairPatch(): Promise<PatchApplyResult> {
     };
   }
 
+  const staged = await runGit(["diff", "--cached", "--name-only"]);
+  commands.push(staged);
+  if (staged.result.exitCode !== 0) {
+    return {
+      ok: false,
+      message: "Failed to verify staged changes",
+      commands,
+    };
+  }
+  if (!staged.result.stdout.trim()) {
+    return {
+      ok: false,
+      message: "No staged changes after git add -A.",
+      commands,
+    };
+  }
+
   const commit = await runGit(["commit", "-m", "bowerbird repair"]);
   commands.push(commit);
   if (commit.result.exitCode !== 0) {

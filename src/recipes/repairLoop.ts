@@ -1,6 +1,7 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getConfig } from "../core/config";
+import { sanitizeRepairPatchFile } from "../core/patchSanitizer";
 import { fail, ok, warn } from "../core/reporter";
 import { run } from "../core/runner";
 import { applyPatch } from "./applyPatch";
@@ -157,37 +158,6 @@ async function restoreStashIfNeeded(state: StashState): Promise<boolean> {
   return true;
 }
 
-async function sanitizePatchFile(projectRoot: string): Promise<boolean> {
-  const metaDir = path.resolve(projectRoot, ".bowerbird");
-  const rawPatchPath = path.resolve(metaDir, "repair_patch.diff");
-  const sanitizedPatchPath = path.resolve(metaDir, "repair_patch.sanitized.diff");
-
-  let raw: string;
-  try {
-    raw = await readFile(rawPatchPath, "utf8");
-  } catch {
-    return false;
-  }
-
-  const noFences = raw
-    .split(/\r?\n/)
-    .filter((line) => !line.trim().startsWith("```"))
-    .join("\n");
-  const lines = noFences.split(/\r?\n/);
-  let startIndex = lines.findIndex((line) => line.startsWith("diff --git "));
-  if (startIndex === -1) {
-    startIndex = lines.findIndex((line) => line.startsWith("--- "));
-  }
-  if (startIndex === -1) {
-    return false;
-  }
-
-  const sanitized = `${lines.slice(startIndex).join("\n").trim()}\n`;
-  await writeFile(sanitizedPatchPath, sanitized, "utf8");
-  ok("Sanitized patch saved to .bowerbird/repair_patch.sanitized.diff");
-  return true;
-}
-
 async function readErrorType(projectRoot: string): Promise<string | undefined> {
   try {
     const errorJsonPath = path.resolve(projectRoot, ".bowerbird", "last_error.json");
@@ -289,14 +259,15 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
       return 1;
     }
 
-    const sanitized = await sanitizePatchFile(projectRoot);
-    if (!sanitized) {
+    const sanitizeResult = await sanitizeRepairPatchFile(projectRoot);
+    if (!sanitizeResult.ok) {
       entry.finishedAt = new Date().toISOString();
       await saveHistory(projectRoot, history);
-      fail("Patch file is not a valid unified diff.");
+      fail(sanitizeResult.message || "Patch file is not a valid unified diff.");
       warn("Ensure .bowerbird/repair_patch.diff contains a valid diff starting with 'diff --git' or '--- '.");
       return 1;
     }
+    ok("Sanitized patch saved to .bowerbird/repair_patch.sanitized.diff");
 
     const stashState = await ensureCleanOrStash();
     if (!stashState) {
