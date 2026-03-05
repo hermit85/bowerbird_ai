@@ -2,7 +2,7 @@
   "name": "bowerbird_ai",
   "version": "0.0.1",
   "description": "AI infrastructure operator for vibe coders and founders",
-  "type": "module",
+  "type": "commonjs",
   "bin": {
     "bowerbird": "dist/cli.js"
   },
