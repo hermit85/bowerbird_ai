@@ -147,7 +147,7 @@ export async function deploy(rawArgs) {
             return 0;
         }
     }
-    const vercelArgs = options.prod ? ["--prod", "--confirm"] : ["deploy", "--confirm"];
+    const vercelArgs = options.prod ? ["--prod", "--yes"] : ["deploy", "--yes"];
     const vercelStep = await executeOrBlock("vercel", vercelArgs, `Vercel ${options.prod ? "production" : "preview"} deploy finished`);
     if (!vercelStep.ok) {
         return 1;
