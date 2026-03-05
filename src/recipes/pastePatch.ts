@@ -40,6 +40,7 @@ export async function pastePatch(): Promise<number> {
   }
 
   ok("Saved sanitized patch to .bowerbird/repair_patch.sanitized.diff");
-  ok("Next step: run `bowerbird go` or continue `bowerbird repair-loop`.");
+  ok("Patch saved. Continue with: bowerbird go");
+  warn("If repair-loop is already running, continue that flow instead.");
   return 0;
 }

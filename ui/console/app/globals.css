@@ -1,0 +1,90 @@
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background: #f8f9fb;
+  color: #1d2939;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 {
+  margin: 0 0 12px;
+}
+
+section {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+}
+
+button {
+  background: #0f172a;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+textarea {
+  width: 100%;
+  min-height: 180px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 10px;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+pre {
+  background: #0b1020;
+  color: #d9e1ff;
+  border-radius: 8px;
+  padding: 10px;
+  overflow: auto;
+  max-height: 300px;
+  font-size: 0.8rem;
+}
+
+.meta {
+  color: #475467;
+  font-size: 0.9rem;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pill {
+  border-radius: 999px;
+  padding: 4px 9px;
+  border: 1px solid #d0d5dd;
+  font-size: 0.8rem;
+}

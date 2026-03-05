@@ -11,6 +11,10 @@ import { applyPatch } from "./recipes/applyPatch";
 import { repairLoop } from "./recipes/repairLoop";
 import { go } from "./recipes/go";
 import { pastePatch } from "./recipes/pastePatch";
+import { capture } from "./recipes/capture";
+import { plan } from "./recipes/plan";
+import { runPlan } from "./recipes/runPlan";
+import { doCommand } from "./recipes/do";
 
 function printHelp(): void {
   console.log("Usage: bowerbird <command> [options]");
@@ -28,6 +32,10 @@ function printHelp(): void {
   console.log("  repair-loop   Run ship -> repair -> apply-patch loop");
   console.log("  go            Founder workflow: repair-loop --max 3 --copy");
   console.log("  paste-patch   Save clipboard patch into .bowerbird and sanitize it");
+  console.log("  capture       Capture local + infra context into .bowerbird/context.md");
+  console.log("  plan          Create .bowerbird/plan.json and .bowerbird/plan.md");
+  console.log("  run           Execute .bowerbird/plan.json (use --dry to preview)");
+  console.log("  do            Execute supported AI instruction from clipboard");
   console.log("");
   console.log("Options:");
   console.log("  --config      TODO: custom config path override");
@@ -111,6 +119,30 @@ async function main(): Promise<void> {
 
   if (command === "paste-patch") {
     const code = await pastePatch();
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "capture") {
+    const code = await capture();
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "plan") {
+    const code = await plan(args.slice(1));
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "run") {
+    const code = await runPlan(args.slice(1));
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "do") {
+    const code = await doCommand();
     process.exitCode = code;
     return;
   }

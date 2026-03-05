@@ -31,18 +31,20 @@ export async function go(): Promise<number> {
       );
       const url = extractUrl(deployText);
       if (url) {
-        ok(`Done. Your app is live at: ${url}`);
+        ok(`Live: ${url}`);
         return 0;
       }
     } catch {
       // Fallback summary below.
     }
 
-    ok("Done. Deploy succeeded.");
+    ok("Live: deployment succeeded");
     return 0;
   }
 
-  warn("Could not finish automatically.");
-  warn("Check .bowerbird/repair_history.json and .bowerbird/last_apply_patch_log.txt");
+  warn(".bowerbird/repair_prompt.md");
+  warn(".bowerbird/repair_patch.diff");
+  warn(".bowerbird/last_apply_patch_log.txt");
+  warn(".bowerbird/repair_history.json");
   return 1;
 }

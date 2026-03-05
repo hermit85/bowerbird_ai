@@ -12,6 +12,7 @@ export type RunResult = {
 
 type RunOptions = {
   cwd?: string;
+  input?: string;
 };
 
 function resolveRunCwd(projectRoot: string, cwd?: string): string {
@@ -40,6 +41,7 @@ export async function run(
   const start = Date.now();
   const result = await execa(cmd, args, {
     cwd: runCwd,
+    input: options.input,
     reject: false,
   });
   const durationMs = Date.now() - start;
