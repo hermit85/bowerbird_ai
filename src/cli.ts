@@ -4,6 +4,7 @@ import { deploy } from "./recipes/deploy";
 import { fixDeploy } from "./recipes/fixDeploy";
 import { init } from "./recipes/init";
 import { ship } from "./recipes/ship";
+import { autoprompt } from "./recipes/autoprompt";
 
 function printHelp(): void {
   console.log("Usage: bowerbird <command> [options]");
@@ -14,6 +15,7 @@ function printHelp(): void {
   console.log("  deploy        Commit/push and trigger Vercel deploy");
   console.log("  fix-deploy    Deploy with automatic error brief on failure");
   console.log("  ship          Run doctor, build, then deploy");
+  console.log("  autoprompt    Generate AI prompt from .bowerbird/last_error.md");
   console.log("");
   console.log("Options:");
   console.log("  --config      TODO: custom config path override");
@@ -55,6 +57,12 @@ async function main(): Promise<void> {
 
   if (command === "ship") {
     const code = await ship(args.slice(1));
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "autoprompt" || command === "prompt") {
+    const code = await autoprompt();
     process.exitCode = code;
     return;
   }
