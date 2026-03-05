@@ -176,7 +176,7 @@ export async function deploy(rawArgs: string[]): Promise<number> {
     }
   }
 
-  const vercelArgs = options.prod ? ["--prod", "--confirm"] : ["deploy", "--confirm"];
+  const vercelArgs = options.prod ? ["--prod", "--yes"] : ["deploy", "--yes"];
   const vercelStep = await executeOrBlock(
     "vercel",
     vercelArgs,
