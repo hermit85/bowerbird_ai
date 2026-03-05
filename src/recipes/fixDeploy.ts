@@ -149,6 +149,24 @@ async function saveDeployArtifacts(
   await writeFile(path.resolve(metaDir, "last_deploy_log.txt"), logs.join("\n"), "utf8");
 }
 
+async function saveDeployLog(projectRoot: string, logs: string[]): Promise<void> {
+  const metaDir = path.resolve(projectRoot, ".bowerbird");
+  await mkdir(metaDir, { recursive: true });
+  await writeFile(path.resolve(metaDir, "last_deploy_log.txt"), logs.join("\n"), "utf8");
+}
+
+function failedCommandLog(failed: FailedStep): string {
+  return [
+    `$ ${failed.cmd} ${failed.args.join(" ")}`.trim(),
+    "exitCode: 1",
+    "stdout:",
+    failed.stdout || "(empty)",
+    "stderr:",
+    failed.stderr || "(empty)",
+    "",
+  ].join("\n");
+}
+
 async function saveErrorBrief(projectRoot: string, failed: FailedStep): Promise<void> {
   const metaDir = path.resolve(projectRoot, ".bowerbird");
   await mkdir(metaDir, { recursive: true });
@@ -183,8 +201,13 @@ async function saveErrorBrief(projectRoot: string, failed: FailedStep): Promise<
   await writeFile(path.resolve(metaDir, "last_error.md"), body, "utf8");
 }
 
-async function exitWithErrorBrief(projectRoot: string, failed: FailedStep): Promise<number> {
+async function exitWithErrorBrief(
+  projectRoot: string,
+  failed: FailedStep,
+  logs: string[],
+): Promise<number> {
   try {
+    await saveDeployLog(projectRoot, [...logs, failedCommandLog(failed)]);
     await saveErrorBrief(projectRoot, failed);
     console.log("Saved error brief to .bowerbird/last_error.md");
   } catch (error) {
@@ -212,14 +235,14 @@ export async function fixDeploy(rawArgs: string[]): Promise<number> {
 
   const statusStep = await runStep("git status", "git", ["status", "--porcelain"]);
   if (!statusStep.ok) {
-    return exitWithErrorBrief(projectRoot, statusStep.failed);
+    return exitWithErrorBrief(projectRoot, statusStep.failed, logs);
   }
   logs.push(commandLog("git", ["status", "--porcelain"], statusStep.result));
 
   if (statusStep.result.stdout.trim().length > 0) {
     const addStep = await runStep("git add", "git", ["add", "."]);
     if (!addStep.ok) {
-      return exitWithErrorBrief(projectRoot, addStep.failed);
+      return exitWithErrorBrief(projectRoot, addStep.failed, logs);
     }
     logs.push(commandLog("git", ["add", "."], addStep.result));
 
@@ -239,7 +262,7 @@ export async function fixDeploy(rawArgs: string[]): Promise<number> {
           stderr: commitResult.stderr,
         };
         fail("git commit", truncateLastLines(commitResult.stderr || commitResult.stdout, 60));
-        return exitWithErrorBrief(projectRoot, failed);
+        return exitWithErrorBrief(projectRoot, failed, logs);
       }
     } catch (error) {
       const failed: FailedStep = {
@@ -250,7 +273,7 @@ export async function fixDeploy(rawArgs: string[]): Promise<number> {
         stderr: error instanceof Error ? error.message : "Unknown execution error.",
       };
       fail("git commit", truncateLastLines(failed.stderr, 60));
-      return exitWithErrorBrief(projectRoot, failed);
+      return exitWithErrorBrief(projectRoot, failed, logs);
     }
   } else {
     ok("git commit skipped (clean tree)");
@@ -258,7 +281,7 @@ export async function fixDeploy(rawArgs: string[]): Promise<number> {
 
   const pushStep = await runStep("git push", "git", ["push"]);
   if (!pushStep.ok) {
-    return exitWithErrorBrief(projectRoot, pushStep.failed);
+    return exitWithErrorBrief(projectRoot, pushStep.failed, logs);
   }
   logs.push(commandLog("git", ["push"], pushStep.result));
 
@@ -273,7 +296,7 @@ export async function fixDeploy(rawArgs: string[]): Promise<number> {
   const vercelArgs = options.prod ? ["--prod", "--yes"] : ["deploy", "--yes"];
   const vercelStep = await runStep("vercel deploy", "vercel", vercelArgs);
   if (!vercelStep.ok) {
-    return exitWithErrorBrief(projectRoot, vercelStep.failed);
+    return exitWithErrorBrief(projectRoot, vercelStep.failed, logs);
   }
   logs.push(commandLog("vercel", vercelArgs, vercelStep.result));
 

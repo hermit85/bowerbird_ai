@@ -6,6 +6,8 @@ import { init } from "./recipes/init";
 import { ship } from "./recipes/ship";
 import { autoprompt } from "./recipes/autoprompt";
 import { fix } from "./recipes/fix";
+import { repair } from "./recipes/repair";
+import { applyPatch } from "./recipes/applyPatch";
 
 function printHelp(): void {
   console.log("Usage: bowerbird <command> [options]");
@@ -18,6 +20,8 @@ function printHelp(): void {
   console.log("  ship          Run doctor, build, then deploy");
   console.log("  autoprompt    Generate AI prompt from .bowerbird/last_error.md");
   console.log("  fix           Attempt auto-fix deploy, then generate prompt on failure");
+  console.log("  repair        Analyze deploy failure and generate repair prompt");
+  console.log("  apply-patch   Apply .bowerbird/repair_patch.diff and commit");
   console.log("");
   console.log("Options:");
   console.log("  --config      TODO: custom config path override");
@@ -71,6 +75,18 @@ async function main(): Promise<void> {
 
   if (command === "fix") {
     const code = await fix(args.slice(1));
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "repair") {
+    const code = await repair(args.slice(1));
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "apply-patch") {
+    const code = await applyPatch();
     process.exitCode = code;
     return;
   }
