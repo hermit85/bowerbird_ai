@@ -1,0 +1,25 @@
+{
+  "name": "bowerbird_ai",
+  "version": "0.0.1",
+  "description": "AI infrastructure operator for vibe coders and founders",
+  "type": "module",
+  "bin": {
+    "bowerbird": "dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc -p .",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "execa": "^9.6.1",
+    "ora": "^9.3.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
