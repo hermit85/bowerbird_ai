@@ -16,6 +16,10 @@ import { plan } from "./recipes/plan";
 import { runPlan } from "./recipes/runPlan";
 import { doCommand } from "./recipes/do";
 import { consoleCommand } from "./recipes/console";
+import { capabilitiesSummary } from "./recipes/capabilities";
+import { providersSummary } from "./recipes/providers";
+import { stateSummary } from "./recipes/state";
+import { initProfile, profileSummary } from "./recipes/initProfile";
 import { isDryRun, setDryRun } from "./core/dryRun";
 
 function printHelp(): void {
@@ -39,6 +43,11 @@ function printHelp(): void {
   console.log("  run           Execute .bowerbird/plan.json (use --dry to preview)");
   console.log("  do            Translate & execute AI instructions from clipboard");
   console.log("  console       Start local web console on http://127.0.0.1:4311");
+  console.log("  capabilities  Print .bowerbird/capabilities.json summary");
+  console.log("  providers     Print capability -> provider mappings");
+  console.log("  state         Print .bowerbird/state.json summary");
+  console.log("  init-profile  Generate repo profile file bowerbird.md");
+  console.log("  profile       Print profile summary and bowerbird.md path");
   console.log("");
   console.log("Options:");
   console.log("  --config      TODO: custom config path override");
@@ -159,6 +168,36 @@ async function main(): Promise<void> {
 
   if (command === "console") {
     const code = await consoleCommand();
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "state") {
+    const code = await stateSummary();
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "capabilities") {
+    const code = await capabilitiesSummary();
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "providers") {
+    const code = await providersSummary();
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "init-profile") {
+    const code = await initProfile();
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "profile") {
+    const code = await profileSummary();
     process.exitCode = code;
     return;
   }

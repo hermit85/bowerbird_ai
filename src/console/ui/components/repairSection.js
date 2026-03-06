@@ -2,10 +2,12 @@ function buttonClass(base, disabled) {
   return `${base} ${disabled ? "opacity-60 cursor-not-allowed" : ""}`;
 }
 
-export function RepairSection({ status, loading }) {
+export function RepairSection({ status, loading, capabilities }) {
+  const caps = capabilities || {};
   const copyBusy = Boolean(loading.copyPromptBtn);
   const pasteBusy = Boolean(loading.pastePatchBtn);
   const applyBusy = Boolean(loading.applyRedeployBtn);
+  const canRepair = caps.repair_loop !== false;
 
   return `
     <section class="rounded-xl bg-white p-4 shadow-sm">
@@ -17,7 +19,7 @@ export function RepairSection({ status, loading }) {
       <div class="mt-3 flex gap-2 flex-wrap">
         <button id="copyPromptBtn" ${copyBusy ? "disabled" : ""} class="${buttonClass("rounded-md bg-sky-600 text-white px-3 py-2 text-sm", copyBusy)}">${copyBusy ? "Copying..." : "Copy prompt"}</button>
         <button id="pastePatchBtn" ${pasteBusy ? "disabled" : ""} class="${buttonClass("rounded-md bg-amber-600 text-white px-3 py-2 text-sm", pasteBusy)}">${pasteBusy ? "Pasting..." : "Paste patch"}</button>
-        <button id="applyRedeployBtn" ${applyBusy ? "disabled" : ""} class="${buttonClass("rounded-md bg-indigo-600 text-white px-3 py-2 text-sm", applyBusy)}">${applyBusy ? "Applying..." : "Apply patch + redeploy"}</button>
+        ${canRepair ? `<button id="applyRedeployBtn" ${applyBusy ? "disabled" : ""} class="${buttonClass("rounded-md bg-indigo-600 text-white px-3 py-2 text-sm", applyBusy)}">${applyBusy ? "Applying..." : "Apply patch + redeploy"}</button>` : ""}
       </div>
     </section>
   `;

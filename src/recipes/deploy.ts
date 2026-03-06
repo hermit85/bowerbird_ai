@@ -4,6 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { getDryRun } from "../core/dryRun";
 import { getConfig } from "../core/config";
 import { fail, ok, warn } from "../core/reporter";
+import { patchState } from "../core/state";
 import { run, type RunResult } from "../core/runner";
 
 type DeployOptions = {
@@ -225,6 +226,26 @@ export async function deploy(rawArgs: string[]): Promise<number> {
       "Deploy completed but failed to persist logs",
       error instanceof Error ? error.message : "Unknown file write error.",
     );
+  }
+
+  try {
+    await patchState(projectRoot, {
+      project: {
+        name: path.basename(projectRoot),
+        root: projectRoot,
+      },
+      vercel: {
+        connected: true,
+        lastDeployUrl: deployUrl,
+        lastDeployAt: new Date().toISOString(),
+      },
+      activity: {
+        lastAction: options.prod ? "deploy_production" : "deploy_preview",
+        lastActionAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    warn("Deploy completed but failed to update state.json", error instanceof Error ? error.message : "Unknown state error.");
   }
 
   return 0;

@@ -1,8 +1,10 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { detectCapabilities, writeCapabilities } from "../core/capabilities";
 import { getConfig } from "../core/config";
 import { fail, ok, warn } from "../core/reporter";
 import { run } from "../core/runner";
+import { patchState, readState } from "../core/state";
 
 type CaptureResult = {
   label: string;
@@ -32,6 +34,47 @@ function extractEnvNames(output: string): string[] {
   }
 
   return [...names];
+}
+
+function extractLocalEnvKeys(content: string): string[] {
+  const keys = new Set<string>();
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+    const match = trimmed.match(/^([A-Z][A-Z0-9_]*)\s*=/);
+    if (match?.[1]) {
+      keys.add(match[1]);
+    }
+  }
+  return [...keys];
+}
+
+async function readEnvFileKeys(projectRoot: string): Promise<string[]> {
+  const files = [".env", ".env.local", ".env.example"];
+  const keys = new Set<string>();
+  for (const fileName of files) {
+    try {
+      const content = await readFile(path.resolve(projectRoot, fileName), "utf8");
+      for (const key of extractLocalEnvKeys(content)) {
+        keys.add(key);
+      }
+    } catch {
+      // Missing env files are normal.
+    }
+  }
+  return [...keys];
+}
+
+async function detectSupabaseProjectRef(projectRoot: string): Promise<string | null> {
+  try {
+    const configToml = await readFile(path.resolve(projectRoot, "supabase", "config.toml"), "utf8");
+    const projectRefMatch = configToml.match(/project_id\s*=\s*"([^"]+)"/);
+    return projectRefMatch?.[1] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function runCapture(label: string, cmd: string, args: string[]): Promise<CaptureResult> {
@@ -67,12 +110,17 @@ export async function capture(): Promise<number> {
   await mkdir(metaDir, { recursive: true });
 
   const gitStatus = await runCapture("git status --porcelain", "git", ["status", "--porcelain"]);
+  const gitBranch = await runCapture("git branch", "git", ["rev-parse", "--abbrev-ref", "HEAD"]);
   const nodeVersion = await runCapture("node -v", "node", ["-v"]);
   const vercelVersion = await runCapture("vercel --version", "vercel", ["--version"]);
   const vercelWhoami = await runCapture("vercel whoami", "vercel", ["whoami"]);
   const vercelEnvLs = await runCapture("vercel env ls", "vercel", ["env", "ls"]);
+  const supabaseVersion = await runCapture("supabase --version", "supabase", ["--version"]);
 
   const envNames = extractEnvNames(vercelEnvLs.stdout);
+  const localEnvKeys = await readEnvFileKeys(projectRoot);
+  const combinedEnvKeys = [...new Set([...envNames, ...localEnvKeys])];
+  const supabaseProjectRef = await detectSupabaseProjectRef(projectRoot);
   const lines = [
     "# BowerBird Context Capture",
     "",
@@ -107,6 +155,46 @@ export async function capture(): Promise<number> {
 
   const contextPath = path.resolve(metaDir, "context.md");
   await writeFile(contextPath, lines.join("\n"), "utf8");
+
+  try {
+    const currentState = await readState(projectRoot);
+    const mergedFunctions = currentState.supabase.functions ?? [];
+    await patchState(projectRoot, {
+      project: {
+        name: path.basename(projectRoot),
+        root: projectRoot,
+      },
+      git: {
+        branch: gitBranch.ok ? gitBranch.stdout.trim() || null : null,
+      },
+      vercel: {
+        connected: vercelVersion.ok,
+      },
+      supabase: {
+        connected: supabaseVersion.ok,
+        projectRef: supabaseProjectRef,
+        functions: mergedFunctions,
+      },
+      env: {
+        knownKeys: combinedEnvKeys,
+      },
+      activity: {
+        lastAction: "capture",
+        lastActionAt: new Date().toISOString(),
+      },
+    });
+    ok("Updated .bowerbird/state.json");
+  } catch (error) {
+    warn("Could not update .bowerbird/state.json", error instanceof Error ? error.message : "Unknown state error.");
+  }
+
+  try {
+    const capabilities = await detectCapabilities(projectRoot);
+    await writeCapabilities(projectRoot, capabilities);
+    ok("Updated .bowerbird/capabilities.json");
+  } catch (error) {
+    warn("Could not update .bowerbird/capabilities.json", error instanceof Error ? error.message : "Unknown capabilities error.");
+  }
 
   ok("Saved context to .bowerbird/context.md");
   if (!vercelEnvLs.ok) {

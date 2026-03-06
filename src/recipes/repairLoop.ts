@@ -5,6 +5,7 @@ import { getDryRun } from "../core/dryRun";
 import { sanitizeRepairPatchFile } from "../core/patchSanitizer";
 import { fail, ok, warn } from "../core/reporter";
 import { run } from "../core/runner";
+import { patchState } from "../core/state";
 import { applyPatch } from "./applyPatch";
 import { repair } from "./repair";
 import { ship } from "./ship";
@@ -197,6 +198,17 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
 
   const patchPath = path.resolve(projectRoot, ".bowerbird", "repair_patch.diff");
 
+  try {
+    await patchState(projectRoot, {
+      activity: {
+        lastAction: dryRun ? "repair_loop_dry_run" : "repair_loop_start",
+        lastActionAt: new Date().toISOString(),
+      },
+    });
+  } catch {
+    // Non-blocking state update.
+  }
+
   if (dryRun) {
     ok(`Dry run: would execute repair-loop with max attempts ${options.maxAttempts}`);
     for (let attempt = 1; attempt <= options.maxAttempts; attempt += 1) {
@@ -204,6 +216,16 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
       ok(`Attempt ${attempt}: would run repair --auto${options.copy ? " --copy" : ""}`);
       ok(`Attempt ${attempt}: would wait for ${path.relative(projectRoot, patchPath)}`);
       ok(`Attempt ${attempt}: would sanitize patch then run apply-patch`);
+    }
+    try {
+      await patchState(projectRoot, {
+        activity: {
+          lastAction: "repair_loop_dry_run_complete",
+          lastActionAt: new Date().toISOString(),
+        },
+      });
+    } catch {
+      // Non-blocking state update.
     }
     return 0;
   }
@@ -233,6 +255,16 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
         const url = parseUrlFromLastDeploy(deployText);
         if (url) {
           ok(`Repair loop complete: ${url}`);
+          try {
+            await patchState(projectRoot, {
+              activity: {
+                lastAction: "repair_loop_success",
+                lastActionAt: new Date().toISOString(),
+              },
+            });
+          } catch {
+            // Non-blocking state update.
+          }
           return 0;
         }
       } catch {
@@ -240,6 +272,16 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
       }
 
       ok("Repair loop complete.");
+      try {
+        await patchState(projectRoot, {
+          activity: {
+            lastAction: "repair_loop_success",
+            lastActionAt: new Date().toISOString(),
+          },
+        });
+      } catch {
+        // Non-blocking state update.
+      }
       return 0;
     }
 
@@ -249,6 +291,16 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
       entry.finishedAt = new Date().toISOString();
       await saveHistory(projectRoot, history);
       fail("Failed to generate repair prompt.");
+      try {
+        await patchState(projectRoot, {
+          activity: {
+            lastAction: "repair_loop_failed",
+            lastActionAt: new Date().toISOString(),
+          },
+        });
+      } catch {
+        // Non-blocking state update.
+      }
       return 1;
     }
     entry.errorType = await readErrorType(projectRoot);
@@ -269,6 +321,16 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
       await saveHistory(projectRoot, history);
       fail("Timed out waiting for .bowerbird/repair_patch.diff.");
       warn("Next step: generate a unified diff from your AI tool and save it to .bowerbird/repair_patch.diff.");
+      try {
+        await patchState(projectRoot, {
+          activity: {
+            lastAction: "repair_loop_timeout",
+            lastActionAt: new Date().toISOString(),
+          },
+        });
+      } catch {
+        // Non-blocking state update.
+      }
       return 1;
     }
 
@@ -278,6 +340,16 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
       await saveHistory(projectRoot, history);
       fail(sanitizeResult.message || "Patch file is not a valid unified diff.");
       warn("Ensure .bowerbird/repair_patch.diff contains a valid diff starting with 'diff --git' or '--- '.");
+      try {
+        await patchState(projectRoot, {
+          activity: {
+            lastAction: "repair_loop_failed",
+            lastActionAt: new Date().toISOString(),
+          },
+        });
+      } catch {
+        // Non-blocking state update.
+      }
       return 1;
     }
     ok("Sanitized patch saved to .bowerbird/repair_patch.sanitized.diff");
@@ -286,6 +358,16 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
     if (!stashState) {
       entry.finishedAt = new Date().toISOString();
       await saveHistory(projectRoot, history);
+      try {
+        await patchState(projectRoot, {
+          activity: {
+            lastAction: "repair_loop_failed",
+            lastActionAt: new Date().toISOString(),
+          },
+        });
+      } catch {
+        // Non-blocking state update.
+      }
       return 1;
     }
 
@@ -295,6 +377,16 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
     if (!restored) {
       entry.finishedAt = new Date().toISOString();
       await saveHistory(projectRoot, history);
+      try {
+        await patchState(projectRoot, {
+          activity: {
+            lastAction: "repair_loop_failed",
+            lastActionAt: new Date().toISOString(),
+          },
+        });
+      } catch {
+        // Non-blocking state update.
+      }
       return 1;
     }
 
@@ -303,11 +395,31 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
 
     if (applyCode !== 0) {
       fail("apply-patch failed. See .bowerbird/last_apply_patch_log.txt.");
+      try {
+        await patchState(projectRoot, {
+          activity: {
+            lastAction: "repair_loop_failed",
+            lastActionAt: new Date().toISOString(),
+          },
+        });
+      } catch {
+        // Non-blocking state update.
+      }
       return 1;
     }
   }
 
   fail(`Repair loop reached max attempts (${options.maxAttempts}) without success.`);
   warn("Review .bowerbird/repair_history.json and last logs, then retry with a better patch.");
+  try {
+    await patchState(projectRoot, {
+      activity: {
+        lastAction: "repair_loop_failed",
+        lastActionAt: new Date().toISOString(),
+      },
+    });
+  } catch {
+    // Non-blocking state update.
+  }
   return 1;
 }

@@ -5,9 +5,10 @@ import { execa } from "execa";
 import { assertNotDryRun, getDryRun, isDryRun } from "../core/dryRun";
 import { fail, ok, warn } from "../core/reporter";
 import { run } from "../core/runner";
-import { deploy } from "./deploy";
 import { getConfig } from "../core/config";
+import { patchState, readState } from "../core/state";
 import { DoPlan, normalizeInstruction, parseDoInstruction } from "../core/doParser";
+import { getAdapterForCapability } from "../providers";
 
 function parseArgs(rawArgs: string[]): { dry: boolean; inlineInstruction: string | null } {
   const dry = isDryRun(rawArgs) || getDryRun();
@@ -86,6 +87,14 @@ function formatStep(step: DoPlan["steps"][number]): string {
 
 export async function doCommand(rawArgs: string[] = []): Promise<number> {
   const { dry, inlineInstruction } = parseArgs(rawArgs);
+  let projectRoot = process.cwd();
+
+  try {
+    const config = await getConfig();
+    projectRoot = config.projectRoot;
+  } catch {
+    // Existing command handlers already surface actionable errors when config is required.
+  }
 
   let instruction = inlineInstruction;
   try {
@@ -117,6 +126,16 @@ export async function doCommand(rawArgs: string[] = []): Promise<number> {
     for (const [index, step] of parsed.steps.entries()) {
       console.log(`${index + 1}. ${formatStep(step)}`);
     }
+    try {
+      await patchState(projectRoot, {
+        activity: {
+          lastAction: "preview_plan",
+          lastActionAt: new Date().toISOString(),
+        },
+      });
+    } catch {
+      // Keep dry-run success if state write fails.
+    }
     await writeArtifacts(parsed, `dry_run=true\nsteps=${parsed.steps.map(formatStep).join("\n")}`);
     return 0;
   }
@@ -130,14 +149,33 @@ export async function doCommand(rawArgs: string[] = []): Promise<number> {
 
     ok(`Detected instruction: add env ${key} to Vercel`);
     const value = await promptSecret(key);
-    const result = await run("vercel", ["env", "add", key], { input: `${value}\n` });
-    if (result.exitCode !== 0) {
-      fail("Failed to add Vercel environment variable.", result.stderr || result.stdout);
-      await writeArtifacts(parsed, `exitCode=${result.exitCode}\n${result.stderr || result.stdout}`);
+    const adapter = getAdapterForCapability("env_management");
+    if (!adapter) {
+      fail("No provider adapter found for env management.");
+      return 1;
+    }
+    const result = await adapter.execute("env_management", { key, value, target: "preview" });
+    if (!result.ok) {
+      fail("Failed to add Vercel environment variable.", result.output);
+      await writeArtifacts(parsed, `exitCode=1\n${result.output}`);
       return 1;
     }
 
     ok(`Added ${key} to Vercel.`);
+    try {
+      const current = await readState(projectRoot);
+      const knownKeys = [...new Set([...(current.env.knownKeys ?? []), key])];
+      await patchState(projectRoot, {
+        env: { knownKeys },
+        vercel: { connected: true },
+        activity: {
+          lastAction: "vercel_env_add",
+          lastActionAt: new Date().toISOString(),
+        },
+      });
+    } catch {
+      // Keep command success if state write fails.
+    }
     await writeArtifacts(parsed, "exitCode=0\nvercel env add success");
     return 0;
   }
@@ -151,33 +189,59 @@ export async function doCommand(rawArgs: string[] = []): Promise<number> {
     }
 
     ok(`Detected instruction: deploy supabase function ${functionName}`);
-    const result = await run("supabase", [
-      "functions",
-      "deploy",
-      functionName,
-      "--project-ref",
-      projectRef,
-    ]);
-    if (result.exitCode !== 0) {
-      fail("Failed to deploy Supabase function.", result.stderr || result.stdout);
-      await writeArtifacts(parsed, `exitCode=${result.exitCode}\n${result.stderr || result.stdout}`);
+    const adapter = getAdapterForCapability("supabase_functions");
+    if (!adapter) {
+      fail("No provider adapter found for Supabase functions.");
+      return 1;
+    }
+    const result = await adapter.execute("supabase_functions", { functionName, projectRef });
+    if (!result.ok) {
+      fail("Failed to deploy Supabase function.", result.output);
+      await writeArtifacts(parsed, `exitCode=1\n${result.output}`);
       return 1;
     }
 
     ok(`Deployed Supabase function ${functionName}.`);
+    try {
+      const current = await readState(projectRoot);
+      const functions = [...new Set([...(current.supabase.functions ?? []), functionName])];
+      await patchState(projectRoot, {
+        supabase: {
+          connected: true,
+          projectRef,
+          functions,
+        },
+        activity: {
+          lastAction: "supabase_function_deploy",
+          lastActionAt: new Date().toISOString(),
+        },
+      });
+    } catch {
+      // Keep command success if state write fails.
+    }
     await writeArtifacts(parsed, `exitCode=0\nsupabase functions deploy ${functionName}`);
     return 0;
   }
 
   if (parsed.detectedTask === "deploy_production") {
     ok("Detected instruction: deploy production");
-    const code = await deploy(["--prod"]);
-    await writeArtifacts(parsed, `exitCode=${code}\ndeploy_production`);
-    return code;
+    const adapter = getAdapterForCapability("deploy_production");
+    if (!adapter) {
+      fail("No provider adapter found for production deployment.");
+      return 1;
+    }
+    const result = await adapter.execute("deploy_production");
+    await writeArtifacts(parsed, `exitCode=${result.ok ? 0 : 1}\n${result.output}\ndeploy_production`);
+    return result.ok ? 0 : 1;
   }
 
   ok("Detected instruction: deploy preview");
-  const code = await deploy([]);
-  await writeArtifacts(parsed, `exitCode=${code}\ndeploy_preview`);
-  return code;
+  const adapter = getAdapterForCapability("deploy_preview");
+  if (!adapter) {
+    fail("No provider adapter found for preview deployment.");
+    return 1;
+  }
+  const result = await adapter.execute("deploy_preview");
+  await writeArtifacts(parsed, `exitCode=${result.ok ? 0 : 1}\n${result.output}\ndeploy_preview`);
+  return result.ok ? 0 : 1;
 }

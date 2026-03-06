@@ -4,7 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { getDryRun, isDryRun } from "../core/dryRun";
 import { getConfig } from "../core/config";
 import { fail, ok, warn } from "../core/reporter";
-import { run } from "../core/runner";
+import { getAdapterForCapability } from "../providers";
 
 type VercelEnvAddStep = {
   id: string;
@@ -186,21 +186,28 @@ export async function runPlan(rawArgs: string[]): Promise<number> {
   for (const step of validated.plan.steps) {
     if (step.type === "vercel_env_add") {
       const secret = await promptSecret(step.key);
-      const envAdd = await run("vercel", ["env", "add", step.key, "preview"], {
-        input: `${secret}\n`,
+      const adapter = getAdapterForCapability("env_management");
+      if (!adapter) {
+        fail(`Step ${step.id} failed`, "No provider adapter for env management.");
+        return 1;
+      }
+      const envAdd = await adapter.execute("env_management", {
+        key: step.key,
+        value: secret,
+        target: "preview",
       });
       commandLogs.push(
         [
           `$ vercel env add ${step.key} preview`,
-          `exitCode: ${envAdd.exitCode}`,
+          `exitCode: ${envAdd.ok ? 0 : 1}`,
           "stdout:",
           "[redacted]",
           "stderr:",
-          envAdd.exitCode === 0 ? "(empty)" : "[redacted]",
+          envAdd.ok ? "(empty)" : "[redacted]",
           "",
         ].join("\n"),
       );
-      if (envAdd.exitCode !== 0) {
+      if (!envAdd.ok) {
         await mkdir(metaDir, { recursive: true });
         await writeFile(path.resolve(metaDir, "last_run_log.txt"), commandLogs.join("\n"), "utf8");
         fail(`Step ${step.id} failed`, "vercel_env_add failed.");
@@ -211,19 +218,24 @@ export async function runPlan(rawArgs: string[]): Promise<number> {
     }
 
     if (step.type === "vercel_deploy") {
-      const deploy = await run("vercel", ["deploy", "--yes"]);
+      const adapter = getAdapterForCapability("deploy_preview");
+      if (!adapter) {
+        fail(`Step ${step.id} failed`, "No provider adapter for preview deploy.");
+        return 1;
+      }
+      const deploy = await adapter.execute("deploy_preview");
       commandLogs.push(
         [
           "$ vercel deploy --yes",
-          `exitCode: ${deploy.exitCode}`,
+          `exitCode: ${deploy.ok ? 0 : 1}`,
           "stdout:",
-          deploy.stdout || "(empty)",
+          deploy.output || "(empty)",
           "stderr:",
-          deploy.stderr || "(empty)",
+          deploy.ok ? "(empty)" : deploy.output || "(empty)",
           "",
         ].join("\n"),
       );
-      if (deploy.exitCode !== 0) {
+      if (!deploy.ok) {
         await mkdir(metaDir, { recursive: true });
         await writeFile(path.resolve(metaDir, "last_run_log.txt"), commandLogs.join("\n"), "utf8");
         fail(`Step ${step.id} failed`, "vercel_deploy failed.");
@@ -233,19 +245,24 @@ export async function runPlan(rawArgs: string[]): Promise<number> {
       continue;
     }
 
-    const logs = await run("vercel", ["logs"]);
+    const adapter = getAdapterForCapability("logs");
+    if (!adapter) {
+      fail(`Step ${step.id} failed`, "No provider adapter for logs.");
+      return 1;
+    }
+    const logs = await adapter.execute("logs");
     commandLogs.push(
       [
         "$ vercel logs",
-        `exitCode: ${logs.exitCode}`,
+        `exitCode: ${logs.ok ? 0 : 1}`,
         "stdout:",
-        logs.stdout || "(empty)",
+        logs.output || "(empty)",
         "stderr:",
-        logs.stderr || "(empty)",
+        logs.ok ? "(empty)" : logs.output || "(empty)",
         "",
       ].join("\n"),
     );
-    if (logs.exitCode !== 0) {
+    if (!logs.ok) {
       await mkdir(metaDir, { recursive: true });
       await writeFile(path.resolve(metaDir, "last_run_log.txt"), commandLogs.join("\n"), "utf8");
       fail(`Step ${step.id} failed`, "vercel_logs failed.");

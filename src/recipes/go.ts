@@ -3,6 +3,7 @@ import path from "node:path";
 import { getConfig } from "../core/config";
 import { getDryRun } from "../core/dryRun";
 import { ok, warn } from "../core/reporter";
+import { patchState } from "../core/state";
 import { repairLoop } from "./repairLoop";
 
 function extractUrl(lastDeployText: string): string | null {
@@ -15,7 +16,6 @@ function extractUrl(lastDeployText: string): string | null {
 
 export async function go(): Promise<number> {
   const dryRun = getDryRun();
-  const code = await repairLoop(["--max", "3", "--copy"]);
 
   let projectRoot = process.cwd();
   try {
@@ -25,7 +25,30 @@ export async function go(): Promise<number> {
     // repair-loop already reports config issues.
   }
 
+  try {
+    await patchState(projectRoot, {
+      activity: {
+        lastAction: dryRun ? "go_dry_run" : "go_start",
+        lastActionAt: new Date().toISOString(),
+      },
+    });
+  } catch {
+    // Keep flow working if state write fails.
+  }
+
+  const code = await repairLoop(["--max", "3", "--copy"]);
+
   if (code === 0) {
+    try {
+      await patchState(projectRoot, {
+        activity: {
+          lastAction: dryRun ? "go_dry_run_complete" : "go_success",
+          lastActionAt: new Date().toISOString(),
+        },
+      });
+    } catch {
+      // Non-blocking state update.
+    }
     if (dryRun) {
       ok("Live: dry run completed (no deploy executed)");
       return 0;
@@ -52,5 +75,15 @@ export async function go(): Promise<number> {
   warn(".bowerbird/repair_patch.diff");
   warn(".bowerbird/last_apply_patch_log.txt");
   warn(".bowerbird/repair_history.json");
+  try {
+    await patchState(projectRoot, {
+      activity: {
+        lastAction: "go_failed",
+        lastActionAt: new Date().toISOString(),
+      },
+    });
+  } catch {
+    // Non-blocking state update.
+  }
   return 1;
 }
