@@ -7,7 +7,7 @@ import { fail, ok, warn } from "../core/reporter";
 import { run } from "../core/runner";
 import { deploy } from "./deploy";
 import { getConfig } from "../core/config";
-import { DoPlan, parseDoInstruction } from "../core/doParser";
+import { DoPlan, normalizeInstruction, parseDoInstruction } from "../core/doParser";
 
 function parseArgs(rawArgs: string[]): { dry: boolean; inlineInstruction: string | null } {
   const dry = isDryRun(rawArgs) || getDryRun();
@@ -103,9 +103,11 @@ export async function doCommand(rawArgs: string[] = []): Promise<number> {
 
   const parsed = parseDoInstruction(instruction);
   if (!parsed) {
+    const normalized = normalizeInstruction(instruction);
+    console.log(`[DEBUG] normalized instruction: "${normalized}"`);
     warn("I couldn't understand this instruction.");
     warn(
-      "Try one of: 'add env KEY to vercel', 'deploy preview', 'deploy supabase function NAME --project-ref REF'.",
+      "Try one of: 'deploy preview', 'deploy production', 'add env KEY to vercel', 'deploy supabase function NAME --project-ref REF'.",
     );
     return 1;
   }
@@ -138,6 +140,40 @@ export async function doCommand(rawArgs: string[] = []): Promise<number> {
     ok(`Added ${key} to Vercel.`);
     await writeArtifacts(parsed, "exitCode=0\nvercel env add success");
     return 0;
+  }
+
+  if (parsed.detectedTask === "supabase_function_deploy") {
+    const functionName = parsed.metadata?.functionName;
+    const projectRef = parsed.metadata?.projectRef;
+    if (!functionName || !projectRef) {
+      fail("Failed to parse Supabase function deployment arguments.");
+      return 1;
+    }
+
+    ok(`Detected instruction: deploy supabase function ${functionName}`);
+    const result = await run("supabase", [
+      "functions",
+      "deploy",
+      functionName,
+      "--project-ref",
+      projectRef,
+    ]);
+    if (result.exitCode !== 0) {
+      fail("Failed to deploy Supabase function.", result.stderr || result.stdout);
+      await writeArtifacts(parsed, `exitCode=${result.exitCode}\n${result.stderr || result.stdout}`);
+      return 1;
+    }
+
+    ok(`Deployed Supabase function ${functionName}.`);
+    await writeArtifacts(parsed, `exitCode=0\nsupabase functions deploy ${functionName}`);
+    return 0;
+  }
+
+  if (parsed.detectedTask === "deploy_production") {
+    ok("Detected instruction: deploy production");
+    const code = await deploy(["--prod"]);
+    await writeArtifacts(parsed, `exitCode=${code}\ndeploy_production`);
+    return code;
   }
 
   ok("Detected instruction: deploy preview");
