@@ -13,7 +13,7 @@ import { InstructionSection } from "/components/instructionSection.js";
 import { RepairSection } from "/components/repairSection.js";
 import { DeploymentSection } from "/components/deploymentSection.js";
 import { EnvironmentSection } from "/components/environmentSection.js";
-import { getLaunchChecklist, getLaunchState, getNextRecommendedAction, mergeLaunchState } from "/launchState.js";
+import { getLaunchChecklist, getLaunchState, getNextRecommendedAction, isProjectLive, mergeLaunchState } from "/launchState.js";
 
 console.log("BowerBird UI loaded");
 
@@ -137,12 +137,27 @@ function launchOperationLabel(operation) {
   return operation || "Operation";
 }
 
+function humanActionLabel(action) {
+  return launchOperationLabel(normalizeLaunchOperation(action));
+}
+
 function checklistActionFromStepId(stepId) {
   if (stepId === "founderConnectDbBtn") return { type: "connect_database" };
   if (stepId === "founderDeployFunctionsBtn") return { type: "deploy_backend_functions" };
   if (stepId === "founderPreviewBtn") return { type: "prepare_preview" };
   if (stepId === "founderLiveBtn") return { type: "make_app_live" };
   return null;
+}
+
+function createPlanSteps(actions) {
+  return (Array.isArray(actions) ? actions : []).map((action, index) => ({
+    id: `plan_step_${index}_${normalizeLaunchOperation(action)}`,
+    action,
+    operation: normalizeLaunchOperation(action),
+    label: humanActionLabel(action),
+    status: "pending",
+    error: null,
+  }));
 }
 
 function createCompletionSnapshot(launchState) {
@@ -287,14 +302,15 @@ function renderNextStepCard(nextStep, loading) {
   `;
 }
 
-function renderProjectLiveInfo(status) {
-  const appLive = Boolean(status?.vercel?.lastDeployUrl);
-  const dbConnected = Boolean(status?.supabase?.connected);
+function renderProjectLiveInfo(status, launchState) {
+  const appLive = isProjectLive(launchState);
+  const dbConnected = Boolean(launchState?.databaseConnected);
   const envReady = (Array.isArray(status?.env?.knownKeys) ? status.env.knownKeys.length : 0) >= 2;
+  const subtitle = appLive ? "Use AI Chat above to run tasks." : "Project setup incomplete";
   return `
     <section class="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
-      <h2 class="text-xl font-semibold">Your project is live</h2>
-      <p class="text-sm text-slate-600 mt-1">Use AI Chat above to run tasks.</p>
+      <h2 class="text-xl font-semibold">${appLive ? "Your project is live" : "Project setup incomplete"}</h2>
+      <p class="text-sm text-slate-600 mt-1">${subtitle}</p>
       <div class="mt-4 grid gap-2 md:grid-cols-3 text-sm">
         <div class="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2"><span class="font-medium">App:</span> ${appLive ? "Live" : "Not live"}</div>
         <div class="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2"><span class="font-medium">Database:</span> ${dbConnected ? "Connected" : "Not connected"}</div>
@@ -378,20 +394,52 @@ function renderActivityList(operations) {
   `;
 }
 
-function renderAiChatExecutionPlanSection({ loading, text, actions, guidance, prodConfirmChecked }) {
+function renderAiChatExecutionPlanSection({ loading, text, steps, guidance, prodConfirmChecked }) {
   const analyzeBusy = Boolean(loading.aiAnalyzeBtn);
   const runBusy = Boolean(loading.aiRunPlanBtn);
   const autoRunBusy = Boolean(loading.aiAutoRunSafeBtn);
-  const hasActions = Array.isArray(actions) && actions.length > 0;
-  const hasProductionDeploy = Array.isArray(actions) && actions.some((action) => String(action?.type) === "make_app_live");
+  const quickBusy = Boolean(loading.operatorQuickLaunchBtn)
+    || Boolean(loading.operatorQuickBackendBtn)
+    || Boolean(loading.operatorQuickPreviewBtn)
+    || Boolean(loading.operatorQuickLiveBtn);
+  const hasActions = Array.isArray(steps) && steps.length > 0;
+  const hasProductionDeploy = Array.isArray(steps) && steps.some((step) => String(step?.operation) === "make_app_live");
   const runDisabled = runBusy || !hasActions || (hasProductionDeploy && !prodConfirmChecked);
   const safeTypes = new Set(["prepare_preview", "show_logs"]);
-  const safeOnly = hasActions && actions.every((action) => safeTypes.has(String(action?.type)));
-  const actionRows = Array.isArray(actions) && actions.length > 0
-    ? actions.map((action, index) => `<li>${index + 1}. ${escapeHtml(formatExecutionAction(action))}</li>`).join("")
+  const safeOnly = hasActions && steps.every((step) => safeTypes.has(String(step?.operation)));
+  const statusClass = (status) => {
+    if (status === "running") return "text-blue-700";
+    if (status === "success") return "text-emerald-700";
+    if (status === "failed") return "text-rose-700";
+    if (status === "skipped") return "text-slate-500";
+    return "text-slate-500";
+  };
+  const statusBackgroundClass = (status) => {
+    if (status === "running") return "bg-blue-50 border-blue-200";
+    if (status === "success") return "bg-emerald-50 border-emerald-200";
+    if (status === "failed") return "bg-rose-50 border-rose-200";
+    if (status === "skipped") return "bg-slate-50 border-slate-200";
+    return "bg-white border-slate-200";
+  };
+  const actionRows = Array.isArray(steps) && steps.length > 0
+    ? steps.map((step, index) =>
+      `<li class="rounded-md border p-3 ${statusBackgroundClass(step?.status)}">
+        <div class="text-[11px] uppercase tracking-wide text-slate-500">Step ${index + 1}</div>
+        <div class="mt-1 text-sm font-medium text-slate-800">${escapeHtml(step?.label || `Step ${index + 1}`)}</div>
+        <div class="mt-1 text-[11px] uppercase tracking-wide ${statusClass(step?.status)}">Status: ${escapeHtml(step?.status || "pending")}</div>
+        ${step?.status === "failed" && step?.error
+          ? `<div class="mt-1 text-xs text-rose-700">${escapeHtml(String(step.error))}</div>`
+          : ""}
+        ${step?.status === "failed"
+          ? `<div class="mt-2">
+            <button id="retryPlanStepBtn-${index}" data-retry-step-index="${index}" ${loading?.[`retryPlanStepBtn-${index}`] ? "disabled" : ""} class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 ${loading?.[`retryPlanStepBtn-${index}`] ? "opacity-60 cursor-not-allowed" : ""}">${loading?.[`retryPlanStepBtn-${index}`] ? "Retrying..." : "Retry step"}</button>
+          </div>`
+          : ""}
+      </li>`,
+    ).join("")
     : "";
-  const intentRows = Array.isArray(actions) && actions.length > 0
-    ? actions.map((action) => `<li>✓ ${escapeHtml(friendlyIntent(action))}</li>`).join("")
+  const intentRows = Array.isArray(steps) && steps.length > 0
+    ? steps.map((step) => `<li>✓ ${escapeHtml(friendlyIntent(step?.action || {}))}</li>`).join("")
     : "<li>Your app is ready. Choose what you want to do next.</li>";
   const guidanceClass = guidance?.tone === "ok"
     ? "bg-emerald-100 border-emerald-300 text-emerald-900"
@@ -403,9 +451,17 @@ function renderAiChatExecutionPlanSection({ loading, text, actions, guidance, pr
 
   return `
     <section class="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
-      <h2 class="text-lg font-semibold">AI Chat → Execution Plan</h2>
-      <label class="text-sm font-medium mt-3 block">or paste instructions from AI</label>
+      <h2 class="text-lg font-semibold">Operator Command</h2>
+      <p class="text-sm text-slate-600 mt-1">Describe what you want to do with your app.</p>
+      <div class="mt-2 flex flex-wrap gap-2">
+        <button id="operatorQuickLaunchBtn" data-operator-command="launch SaaS" ${quickBusy ? "disabled" : ""} class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Launch SaaS</button>
+        <button id="operatorQuickBackendBtn" data-operator-command="deploy backend" ${quickBusy ? "disabled" : ""} class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Deploy backend</button>
+        <button id="operatorQuickPreviewBtn" data-operator-command="deploy preview" ${quickBusy ? "disabled" : ""} class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Deploy preview</button>
+        <button id="operatorQuickLiveBtn" data-operator-command="make app live" ${quickBusy ? "disabled" : ""} class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Make app live</button>
+      </div>
+      <label class="text-sm font-medium mt-3 block">Command</label>
       <textarea id="ai-analyze-input" class="mt-2 w-full rounded-md border border-slate-300 p-3 h-28 text-sm" placeholder="Paste AI instructions here...">${escapeHtml(text || "")}</textarea>
+      <p class="mt-1 text-xs text-slate-500">Examples: launch SaaS, deploy preview, connect database, deploy backend</p>
       <div class="mt-3">
         <button id="aiAnalyzeBtn" ${analyzeBusy ? "disabled" : ""} class="rounded-md bg-slate-700 text-white px-3 py-2 text-sm ${analyzeBusy ? "opacity-60 cursor-not-allowed" : ""}">${analyzeBusy ? "Analyzing..." : "Analyze"}</button>
         <button id="aiRunPlanBtn" ${runDisabled ? "disabled" : ""} class="ml-2 rounded-md bg-emerald-700 text-white px-3 py-2 text-sm ${runDisabled ? "opacity-60 cursor-not-allowed" : ""}">${runBusy ? "Running..." : "Run Plan"}</button>
@@ -439,8 +495,8 @@ function renderAiChatExecutionPlanSection({ loading, text, actions, guidance, pr
         : '<p class="mt-3 text-sm text-slate-600">Paste instructions from AI to run tasks automatically.</p>'}
       ${hasActions
         ? `<div class="mt-3">
-          <div class="text-xs font-medium uppercase tracking-wide text-slate-500">Detected Actions</div>
-          <ol class="mt-1 list-decimal pl-5 text-xs text-slate-600 space-y-1">${actionRows}</ol>
+          <div class="text-sm font-semibold text-slate-800">Execution Plan</div>
+          <ol class="mt-2 space-y-2">${actionRows}</ol>
         </div>`
         : ""}
     </section>
@@ -537,6 +593,7 @@ function App() {
   const [executionPlan, setExecutionPlan] = useState({
     rawInput: "",
     actions: [],
+    steps: [],
     analyzedAt: null,
   });
   const [prodConfirmChecked, setProdConfirmChecked] = useState(false);
@@ -827,6 +884,17 @@ function App() {
     );
   }
 
+  function setPlanStepStatus(index, status, error = null) {
+    setExecutionPlan((prev) => {
+      const steps = Array.isArray(prev.steps) ? [...prev.steps] : [];
+      if (!steps[index]) {
+        return prev;
+      }
+      steps[index] = { ...steps[index], status, error };
+      return { ...prev, steps };
+    });
+  }
+
   function markLaunchStateSuccess(operation) {
     if (operation === "connect_database") {
       setLaunchStateOverrides((prev) => ({ ...prev, databaseConnected: true }));
@@ -938,7 +1006,6 @@ function App() {
       if (jobIds.length > 0) {
         const result = await waitForQueuedJobs(jobIds);
         if (!result.ok) {
-          updateActivityEntry(entryId, "error", `${label} failed`, result.message);
           throw new Error(result.message || `${label} failed`);
         }
       }
@@ -953,10 +1020,37 @@ function App() {
     }
   }
 
+  async function analyzeOperatorInput(text) {
+    const normalized = String(text || "").trim();
+    setExecutionPlan({ rawInput: text, actions: [], steps: [], analyzedAt: new Date().toISOString() });
+    setProdConfirmChecked(false);
+    if (!normalized) {
+      return "Please paste AI chat text first.";
+    }
+
+    const data = await postJson("/api/ai/detect", { text });
+    const actions = Array.isArray(data.actions) ? data.actions : [];
+    setExecutionPlan({
+      rawInput: text,
+      actions,
+      steps: createPlanSteps(actions),
+      analyzedAt: new Date().toISOString(),
+    });
+    if (actions.length === 0) {
+      return "No actions detected.";
+    }
+    return [
+      "Execution Plan",
+      ...actions.map((action, index) => `Step ${index + 1}: ${humanActionLabel(action)}`),
+    ].join("\n");
+  }
+
   async function executePlanActionsSequential(actions, options = {}) {
     const queuedJobIds = [];
     const lines = [];
     const completion = createCompletionSnapshot(launchState);
+    const shouldTrackPlan = !options?.skipPlanStatus;
+    const startIndex = Number.isInteger(options?.startIndex) ? Math.max(0, options.startIndex) : 0;
 
     const markCompleted = (operation) => {
       if (operation === "connect_database") completion.connect_database = true;
@@ -973,27 +1067,56 @@ function App() {
       return false;
     };
 
-    for (let i = 0; i < actions.length; i += 1) {
+    for (let i = startIndex; i < actions.length; i += 1) {
       const action = actions[i];
       const label = formatExecutionAction(action);
       const operation = normalizeLaunchOperation(action);
+      if (shouldTrackPlan) {
+        setPlanStepStatus(i, "pending", null);
+      }
       if (!options?.silentProgress) {
         setLaunchProgress(`Running: ${label}`);
       }
       lines.push(`Step ${i + 1}/${actions.length}: ${label}`);
       if (alreadyCompleted(operation)) {
-        createActivityEntry(operation, "success", `${launchOperationLabel(operation)} already completed`);
-        lines.push(`↷ skipped ${label} (already complete)`);
+        const backendNotRequired = operation === "deploy_backend_functions" && status?.supabase?.functionsRequired === false;
+        if (backendNotRequired) {
+          createActivityEntry(operation, "skipped", "No Supabase functions found in this project. Skipping backend deployment.");
+        } else {
+          createActivityEntry(operation, "success", `${launchOperationLabel(operation)} already completed`);
+        }
+        if (shouldTrackPlan) {
+          setPlanStepStatus(i, "skipped", null);
+        }
+        lines.push(
+          backendNotRequired
+            ? "↷ skipped deploy backend functions (not required for this project)"
+            : `↷ skipped ${label} (already complete)`,
+        );
         continue;
       }
-      const result = await runOperationHandler(action);
-      const jobIds = Array.isArray(result?.jobIds) ? result.jobIds : [];
-      queuedJobIds.push(...jobIds);
-      markCompleted(result?.operation || operation);
-      lines.push(`✓ ${label}`);
-      await loadOperations();
-      await loadStatus();
-      await loadSuggestions();
+      if (shouldTrackPlan) {
+        setPlanStepStatus(i, "running", null);
+      }
+      try {
+        const result = await runOperationHandler(action);
+        const jobIds = Array.isArray(result?.jobIds) ? result.jobIds : [];
+        queuedJobIds.push(...jobIds);
+        markCompleted(result?.operation || operation);
+        if (shouldTrackPlan) {
+          setPlanStepStatus(i, "success", null);
+        }
+        lines.push(`✓ ${label}`);
+        await loadOperations();
+        await loadStatus();
+        await loadSuggestions();
+      } catch (error) {
+        if (shouldTrackPlan) {
+          const message = error instanceof Error ? error.message : `${label} failed`;
+          setPlanStepStatus(i, "failed", message);
+        }
+        throw error;
+      }
     }
 
     if (!options?.silentProgress) {
@@ -1054,29 +1177,17 @@ function App() {
           return;
         }
 
+        const quickCommand = String(target.dataset?.operatorCommand || "").trim();
+        if (quickCommand) {
+          await runAction(target.id, "Analyze", async () => analyzeOperatorInput(quickCommand));
+          return;
+        }
+
         if (target.id === "aiAnalyzeBtn") {
           await runAction("aiAnalyzeBtn", "Analyze", async () => {
             const inputEl = document.getElementById("ai-analyze-input");
             const text = inputEl instanceof HTMLTextAreaElement ? inputEl.value : "";
-            const normalized = text.trim();
-            setExecutionPlan({ rawInput: text, actions: [], analyzedAt: new Date().toISOString() });
-            if (!normalized) {
-              setExecutionPlan({ rawInput: text, actions: [], analyzedAt: new Date().toISOString() });
-              setProdConfirmChecked(false);
-              return "Please paste AI chat text first.";
-            }
-
-            const data = await postJson("/api/ai/detect", { text });
-            const actions = Array.isArray(data.actions) ? data.actions : [];
-            setExecutionPlan({ rawInput: text, actions, analyzedAt: new Date().toISOString() });
-            setProdConfirmChecked(false);
-            if (actions.length === 0) {
-              return "No actions detected.";
-            }
-            return [
-              "Detected Actions",
-              ...actions.map((action, index) => `${index + 1}. ${formatExecutionAction(action)}`),
-            ].join("\n");
+            return analyzeOperatorInput(text);
           });
           return;
         }
@@ -1199,18 +1310,7 @@ function App() {
         const shortcutInstruction = shortcutMap[target.id];
         if (shortcutInstruction) {
           await runAction(target.id, "Analyze shortcut", async () => {
-            setExecutionPlan({ rawInput: shortcutInstruction, actions: [], analyzedAt: new Date().toISOString() });
-            setProdConfirmChecked(false);
-            const data = await postJson("/api/ai/detect", { text: shortcutInstruction });
-            const actions = Array.isArray(data.actions) ? data.actions : [];
-            setExecutionPlan({ rawInput: shortcutInstruction, actions, analyzedAt: new Date().toISOString() });
-            if (actions.length === 0) {
-              return "No actions detected.";
-            }
-            return [
-              "Detected Actions",
-              ...actions.map((action, index) => `${index + 1}. ${formatExecutionAction(action)}`),
-            ].join("\n");
+            return analyzeOperatorInput(shortcutInstruction);
           });
           return;
         }
@@ -1231,6 +1331,7 @@ function App() {
               return "Please confirm production deployment first.";
             }
 
+            setExecutionPlan((prev) => ({ ...prev, steps: createPlanSteps(prev.actions) }));
             const result = await executePlanActionsSequential(executionPlan.actions, { silentProgress: true });
             return [
               "Running plan",
@@ -1257,6 +1358,7 @@ function App() {
               return "Auto-run only supports safe plans (deploy preview, show logs).";
             }
 
+            setExecutionPlan((prev) => ({ ...prev, steps: createPlanSteps(prev.actions) }));
             const result = await executePlanActionsSequential(executionPlan.actions, { silentProgress: true });
             return [
               "Running safe actions",
@@ -1264,6 +1366,45 @@ function App() {
               "",
               `Jobs queued: ${result.jobIds.length}`,
             ].join("\n");
+          });
+          return;
+        }
+
+        const retryStepIndexRaw = target.dataset?.retryStepIndex;
+        if (retryStepIndexRaw !== undefined) {
+          const retryIndex = Number.parseInt(String(retryStepIndexRaw), 10);
+          if (!Number.isInteger(retryIndex) || retryIndex < 0) {
+            return;
+          }
+          const retryButtonId = `retryPlanStepBtn-${retryIndex}`;
+          await runAction(retryButtonId, "Retry step", async () => {
+            const steps = Array.isArray(executionPlan.steps) ? executionPlan.steps : [];
+            const retryStep = steps[retryIndex];
+            if (!retryStep) {
+              return "Step not found.";
+            }
+            if (retryStep.status !== "failed") {
+              return "Only failed steps can be retried.";
+            }
+
+            setPlanStepStatus(retryIndex, "running", null);
+            try {
+              await runOperationHandler(retryStep.action);
+              setPlanStepStatus(retryIndex, "success", null);
+              const resumeResult = await executePlanActionsSequential(executionPlan.actions, {
+                silentProgress: true,
+                startIndex: retryIndex + 1,
+              });
+              return [
+                `Retried step ${retryIndex + 1}: ${retryStep.label}`,
+                "Retry successful.",
+                `Resumed remaining steps. Jobs queued: ${resumeResult.jobIds.length}`,
+              ].join("\n");
+            } catch (error) {
+              const message = error instanceof Error ? error.message : `${retryStep.label} failed`;
+              setPlanStepStatus(retryIndex, "failed", message);
+              throw error;
+            }
           });
           return;
         }
@@ -1594,11 +1735,11 @@ function App() {
       renderAiChatExecutionPlanSection({
         loading,
         text: executionPlan.rawInput,
-        actions: executionPlan.actions,
+        steps: executionPlan.steps,
         guidance,
         prodConfirmChecked,
       }),
-      renderProjectLiveInfo(status),
+      renderProjectLiveInfo(status, launchState),
       renderActivityList(activityLog),
       resultBanner
         ? `<section class="rounded-xl p-3 shadow-sm ${resultBanner.type === "success" ? "bg-emerald-100 border border-emerald-300 text-emerald-900" : "bg-rose-100 border border-rose-300 text-rose-900"}">${escapeHtml(resultBanner.message)} (${escapeHtml(resultBanner.time)})</section>`

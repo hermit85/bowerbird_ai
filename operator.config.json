@@ -1,5 +1,8 @@
 {
   "projectRoot": ".",
+  "supabase": {
+    "project_ref": "hrhrbdjvfoadtwexssgx"
+  },
   "allowCommands": [
     "git",
     "node",

@@ -12,7 +12,12 @@ function envConfiguredCount(status) {
 }
 
 export function ProjectHealthSection({ status }) {
-  const appLive = Boolean(status?.vercel?.lastDeployUrl);
+  const knownKeys = Array.isArray(status?.env?.knownKeys) ? status.env.knownKeys : [];
+  const databaseConnected = knownKeys.includes("DATABASE_URL");
+  const backendDeployed = Array.isArray(status?.supabase?.functions) && status.supabase.functions.length > 0;
+  const previewReady = Boolean(status?.vercel?.lastDeployUrl);
+  const appLiveFlag = /production|make_app_live|deploy_production/.test(String(status?.activity?.lastAction || "").toLowerCase());
+  const appLive = Boolean(databaseConnected && backendDeployed && previewReady && appLiveFlag);
   const supabaseConnected = Boolean(status?.supabase?.connected);
   const envConfigured = envConfiguredCount(status);
 

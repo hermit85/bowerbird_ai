@@ -1,12 +1,13 @@
 export function getLaunchState(status) {
   const knownKeys = Array.isArray(status?.env?.knownKeys) ? status.env.knownKeys : [];
   const supabaseFunctions = Array.isArray(status?.supabase?.functions) ? status.supabase.functions : [];
+  const functionsRequired = status?.supabase?.functionsRequired;
   const lastDeployUrl = String(status?.vercel?.lastDeployUrl || "").trim();
   const lastAction = String(status?.activity?.lastAction || "").toLowerCase();
 
   return {
     databaseConnected: knownKeys.includes("DATABASE_URL"),
-    backendDeployed: supabaseFunctions.length > 0,
+    backendDeployed: functionsRequired === false ? true : supabaseFunctions.length > 0,
     previewReady: Boolean(lastDeployUrl),
     appLive: /production|make_app_live|deploy_production/.test(lastAction),
   };
@@ -65,4 +66,13 @@ export function mergeLaunchState(base, overrides) {
     previewReady: Boolean(overrides?.previewReady ?? base?.previewReady),
     appLive: Boolean(overrides?.appLive ?? base?.appLive),
   };
+}
+
+export function isProjectLive(launchState) {
+  return Boolean(
+    launchState?.databaseConnected &&
+    launchState?.backendDeployed &&
+    launchState?.previewReady &&
+    launchState?.appLive,
+  );
 }

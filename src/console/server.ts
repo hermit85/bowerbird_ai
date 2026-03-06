@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { execa } from "execa";
@@ -26,7 +26,9 @@ type StatusPayload = {
   project: ProjectState["project"];
   git: ProjectState["git"];
   vercel: ProjectState["vercel"];
-  supabase: ProjectState["supabase"];
+  supabase: ProjectState["supabase"] & {
+    functionsRequired?: boolean;
+  };
   env: ProjectState["env"];
   activity: ProjectState["activity"];
   lastErrorJson: string | null;
@@ -86,6 +88,38 @@ async function readMaybe(filePath: string): Promise<string | null> {
     return await readFile(filePath, "utf8");
   } catch {
     return null;
+  }
+}
+
+async function detectDeployableSupabaseFunctions(projectRoot: string): Promise<string[]> {
+  const functionsDir = path.resolve(projectRoot, "supabase", "functions");
+  try {
+    const entries = await readdir(functionsDir, { withFileTypes: true });
+    const entryFiles = ["index.ts", "index.js", "main.ts", "main.js", "mod.ts"];
+    const deployable: string[] = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const dirPath = path.resolve(functionsDir, entry.name);
+      const checks = await Promise.all(
+        entryFiles.map(async (file) => {
+          try {
+            const st = await stat(path.resolve(dirPath, file));
+            return st.isFile();
+          } catch {
+            return false;
+          }
+        }),
+      );
+      if (checks.some(Boolean)) {
+        deployable.push(entry.name);
+      }
+    }
+    return deployable;
+  } catch {
+    return [];
   }
 }
 
@@ -169,16 +203,11 @@ async function mapInstructionToJobs(projectRoot: string, instruction: string, pa
     if (!functionName || functionName.toUpperCase() === "NAME") {
       throw new Error("Missing Supabase function name. Use: deploy supabase function your_fn --project-ref <ref>");
     }
-    const state = await readState(projectRoot);
-    const projectRef = state.supabase.projectRef ?? (typeof payload?.projectRef === "string" ? payload.projectRef : "");
-    if (!projectRef) {
-      throw new Error("Missing Supabase project ref. Add --project-ref or run capture to detect it.");
-    }
     return [{
       type: "deploy_supabase_function",
       payload: {
         functionName,
-        projectRef,
+        projectRef: typeof payload?.projectRef === "string" ? payload.projectRef : "",
       },
     }];
   }
@@ -291,6 +320,7 @@ async function getStatus(): Promise<StatusPayload> {
   const vercelWhoami = await runStatusCommand("vercel", ["whoami"]);
   const supabaseVersion = await runStatusCommand("supabase", ["--version"]);
   const envList = await runStatusCommand("vercel", ["env", "ls"]);
+  const deployableFunctions = await detectDeployableSupabaseFunctions(projectRoot);
 
   const lastDeploy = await readMaybe(path.resolve(metaDir, "last_deploy.txt"));
   const fallbackLastDeploy = parseLastDeployUrl(lastDeploy);
@@ -334,7 +364,10 @@ async function getStatus(): Promise<StatusPayload> {
     project: resolvedState.project,
     git: resolvedState.git,
     vercel: resolvedState.vercel,
-    supabase: resolvedState.supabase,
+    supabase: {
+      ...resolvedState.supabase,
+      functionsRequired: deployableFunctions.length > 0,
+    },
     env: resolvedState.env,
     activity: resolvedState.activity,
     lastErrorJson: await readMaybe(path.resolve(metaDir, "last_error.json")),
