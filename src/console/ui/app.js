@@ -117,9 +117,12 @@ function formatExecutionAction(action) {
 function renderAiChatExecutionPlanSection({ loading, text, actions, guidance, prodConfirmChecked }) {
   const analyzeBusy = Boolean(loading.aiAnalyzeBtn);
   const runBusy = Boolean(loading.aiRunPlanBtn);
+  const autoRunBusy = Boolean(loading.aiAutoRunSafeBtn);
   const hasActions = Array.isArray(actions) && actions.length > 0;
   const hasProductionDeploy = Array.isArray(actions) && actions.some((action) => String(action?.type) === "deploy_production");
   const runDisabled = runBusy || !hasActions || (hasProductionDeploy && !prodConfirmChecked);
+  const safeTypes = new Set(["deploy_preview", "show_logs"]);
+  const safeOnly = hasActions && actions.every((action) => safeTypes.has(String(action?.type)));
   const actionRows = Array.isArray(actions) && actions.length > 0
     ? actions.map((action, index) => `<li>${index + 1}. ${escapeHtml(formatExecutionAction(action))}</li>`).join("")
     : "<li>No actions detected yet.</li>";
@@ -147,6 +150,12 @@ function renderAiChatExecutionPlanSection({ loading, text, actions, guidance, pr
             <input id="prodConfirmCheckbox" type="checkbox" ${prodConfirmChecked ? "checked" : ""} />
             <span>I confirm production deployment</span>
           </label>
+        </div>`
+        : ""}
+      ${safeOnly
+        ? `<div class="mt-3 rounded-lg border border-emerald-300 bg-emerald-100 p-3 text-emerald-900">
+          <div class="text-sm font-semibold">Safe to run automatically</div>
+          <button id="aiAutoRunSafeBtn" ${autoRunBusy ? "disabled" : ""} class="mt-2 rounded-md bg-emerald-700 text-white px-3 py-2 text-sm ${autoRunBusy ? "opacity-60 cursor-not-allowed" : ""}">${autoRunBusy ? "Running..." : "Auto-run safe actions"}</button>
         </div>`
         : ""}
       <div class="mt-3">
@@ -590,6 +599,36 @@ function App() {
               ...actions.map((action, index) => `${index + 1}. ${formatExecutionAction(action)}`),
               "",
               `Jobs queued: ${jobIds.length}`,
+            ].join("\n");
+          });
+          return;
+        }
+
+        if (target.id === "aiAutoRunSafeBtn") {
+          await runAction("aiAutoRunSafeBtn", "Auto-run safe actions", async () => {
+            const text = aiAnalyzeText.trim();
+            if (!text) {
+              return "Please paste AI chat text first.";
+            }
+            if (!Array.isArray(aiAnalyzeActions) || aiAnalyzeActions.length === 0) {
+              return "No detected actions to run. Click Analyze first.";
+            }
+            const safeTypes = new Set(["deploy_preview", "show_logs"]);
+            const safeOnly = aiAnalyzeActions.every((action) => safeTypes.has(String(action?.type)));
+            if (!safeOnly) {
+              return "Auto-run only supports safe plans (deploy preview, show logs).";
+            }
+
+            const data = await postJson("/api/ai/run", { text });
+            const actions = Array.isArray(data.actions) ? data.actions : [];
+            setAiAnalyzeActions(actions);
+            await loadOperations();
+            await loadStatus();
+            return [
+              "Running safe actions",
+              ...actions.map((action, index) => `${index + 1}. ${formatExecutionAction(action)}`),
+              "",
+              `Jobs queued: ${Array.isArray(data.jobIds) ? data.jobIds.length : 0}`,
             ].join("\n");
           });
           return;

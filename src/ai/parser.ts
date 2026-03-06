@@ -25,8 +25,27 @@ type IndexedAction = {
   action: ExecutionAction;
 };
 
-function parseLine(line: string): ExecutionAction[] {
-  const normalized = normalizeLine(line);
+function toSegments(text: string): string[] {
+  // Normalize bullets and numbered list prefixes first.
+  const cleanedLines = text
+    .split(/\r?\n/)
+    .map((line) => normalizeLine(line))
+    .filter((line) => line.length > 0);
+
+  if (cleanedLines.length === 0) {
+    return [];
+  }
+
+  // Join long chats into one stream, then split into sentence-like segments.
+  const stream = cleanedLines.join(" ").replace(/\s+/g, " ").trim();
+  const pieces = stream.split(/(?<=[.!?])\s+|(?:\s*;\s*)/g);
+  return pieces
+    .map((piece) => piece.trim())
+    .filter((piece) => piece.length > 0);
+}
+
+function parseSegment(segment: string): ExecutionAction[] {
+  const normalized = normalizeLine(segment);
   if (!normalized) {
     return [];
   }
@@ -72,9 +91,9 @@ function parseLine(line: string): ExecutionAction[] {
 
 export function parseAIInstructions(text: string): ExecutionPlan {
   const actions: ExecutionAction[] = [];
-  const lines = text.split(/\r?\n/);
-  for (const line of lines) {
-    actions.push(...parseLine(line));
+  const segments = toSegments(text);
+  for (const segment of segments) {
+    actions.push(...parseSegment(segment));
   }
   return {
     actions,
