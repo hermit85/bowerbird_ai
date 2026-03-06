@@ -15,6 +15,8 @@ import { capture } from "./recipes/capture";
 import { plan } from "./recipes/plan";
 import { runPlan } from "./recipes/runPlan";
 import { doCommand } from "./recipes/do";
+import { consoleCommand } from "./recipes/console";
+import { isDryRun, setDryRun } from "./core/dryRun";
 
 function printHelp(): void {
   console.log("Usage: bowerbird <command> [options]");
@@ -35,14 +37,22 @@ function printHelp(): void {
   console.log("  capture       Capture local + infra context into .bowerbird/context.md");
   console.log("  plan          Create .bowerbird/plan.json and .bowerbird/plan.md");
   console.log("  run           Execute .bowerbird/plan.json (use --dry to preview)");
-  console.log("  do            Execute supported AI instruction from clipboard");
+  console.log("  do            Translate & execute AI instructions from clipboard");
+  console.log("  console       Start local web console on http://127.0.0.1:4311");
   console.log("");
   console.log("Options:");
   console.log("  --config      TODO: custom config path override");
 }
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  const rawArgs = process.argv.slice(2);
+  const dryRun = isDryRun(rawArgs);
+  setDryRun(dryRun);
+  if (dryRun) {
+    console.log("DRY RUN: no commands executed.");
+  }
+
+  const args = rawArgs.filter((arg) => arg !== "--dry");
   const command = args[0];
   const hasConfigFlag = args.includes("--config");
 
@@ -142,7 +152,13 @@ async function main(): Promise<void> {
   }
 
   if (command === "do") {
-    const code = await doCommand();
+    const code = await doCommand(args.slice(1));
+    process.exitCode = code;
+    return;
+  }
+
+  if (command === "console") {
+    const code = await consoleCommand();
     process.exitCode = code;
     return;
   }

@@ -1,6 +1,7 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getConfig } from "../core/config";
+import { getDryRun } from "../core/dryRun";
 import { sanitizeRepairPatchFile } from "../core/patchSanitizer";
 import { fail, ok, warn } from "../core/reporter";
 import { run } from "../core/runner";
@@ -178,6 +179,7 @@ async function saveHistory(projectRoot: string, history: RepairHistory): Promise
 
 export async function repairLoop(rawArgs: string[]): Promise<number> {
   const options = parseArgs(rawArgs);
+  const dryRun = getDryRun();
 
   let projectRoot: string;
   try {
@@ -194,6 +196,17 @@ export async function repairLoop(rawArgs: string[]): Promise<number> {
   };
 
   const patchPath = path.resolve(projectRoot, ".bowerbird", "repair_patch.diff");
+
+  if (dryRun) {
+    ok(`Dry run: would execute repair-loop with max attempts ${options.maxAttempts}`);
+    for (let attempt = 1; attempt <= options.maxAttempts; attempt += 1) {
+      ok(`Attempt ${attempt}: would run ship ${options.shipArgs.join(" ")}`.trim());
+      ok(`Attempt ${attempt}: would run repair --auto${options.copy ? " --copy" : ""}`);
+      ok(`Attempt ${attempt}: would wait for ${path.relative(projectRoot, patchPath)}`);
+      ok(`Attempt ${attempt}: would sanitize patch then run apply-patch`);
+    }
+    return 0;
+  }
 
   for (let attempt = 1; attempt <= options.maxAttempts; attempt += 1) {
     const entry: AttemptHistory = {

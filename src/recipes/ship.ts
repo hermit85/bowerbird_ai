@@ -1,6 +1,7 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getConfig } from "../core/config";
+import { getDryRun } from "../core/dryRun";
 import { fail, ok, warn } from "../core/reporter";
 import { deploy } from "./deploy";
 import { doctor } from "./doctor";
@@ -105,6 +106,7 @@ async function hasBuildScript(projectRoot: string): Promise<boolean> {
 }
 
 export async function ship(rawArgs: string[]): Promise<number> {
+  const dryRun = getDryRun();
   const parsed = parseArgs(rawArgs);
   const forwardArgs = parsed.prod
     ? parsed.message === "chore: deploy"
@@ -121,6 +123,14 @@ export async function ship(rawArgs: string[]): Promise<number> {
   } catch (error) {
     fail("Config validation failed", error instanceof Error ? error.message : "Unknown error.");
     return 1;
+  }
+
+  if (dryRun) {
+    ok("Planned: bowerbird doctor");
+    ok("Planned: npm run build (if package.json has scripts.build)");
+    ok(`Planned: bowerbird deploy ${forwardArgs.join(" ")}`.trim());
+    ok("Ship dry run complete");
+    return 0;
   }
 
   ok("Running doctor");

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { getConfig } from "../core/config";
+import { getDryRun } from "../core/dryRun";
 import { ok, warn } from "../core/reporter";
 import { repairLoop } from "./repairLoop";
 
@@ -13,6 +14,7 @@ function extractUrl(lastDeployText: string): string | null {
 }
 
 export async function go(): Promise<number> {
+  const dryRun = getDryRun();
   const code = await repairLoop(["--max", "3", "--copy"]);
 
   let projectRoot = process.cwd();
@@ -24,6 +26,10 @@ export async function go(): Promise<number> {
   }
 
   if (code === 0) {
+    if (dryRun) {
+      ok("Live: dry run completed (no deploy executed)");
+      return 0;
+    }
     try {
       const deployText = await readFile(
         path.resolve(projectRoot, ".bowerbird", "last_deploy.txt"),

@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
+import { getDryRun, isDryRun } from "../core/dryRun";
 import { getConfig } from "../core/config";
 import { fail, ok, warn } from "../core/reporter";
 import { run } from "../core/runner";
@@ -31,7 +32,7 @@ type PlanDocument = {
 };
 
 function parseDryFlag(rawArgs: string[]): boolean {
-  return rawArgs.includes("--dry");
+  return isDryRun(rawArgs) || getDryRun();
 }
 
 function validatePlan(value: unknown): { ok: true; plan: PlanDocument } | { ok: false; message: string } {
@@ -170,9 +171,14 @@ export async function runPlan(rawArgs: string[]): Promise<number> {
 
   if (dry) {
     ok("Dry run mode.");
+    const dryLogs: string[] = [];
     for (const step of validated.plan.steps) {
-      ok(`Step ${step.id}: ${renderDryCommand(step)}`);
+      const commandText = renderDryCommand(step);
+      ok(`Step ${step.id}: ${commandText}`);
+      dryLogs.push(`[DRY RUN] Step ${step.id}: ${commandText}`);
     }
+    await mkdir(metaDir, { recursive: true });
+    await writeFile(path.resolve(metaDir, "last_run_log.txt"), `${dryLogs.join("\n")}\n`, "utf8");
     return 0;
   }
 

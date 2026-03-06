@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
+import { getDryRun } from "../core/dryRun";
 import { getConfig } from "../core/config";
 import { fail, ok, warn } from "../core/reporter";
 import { run, type RunResult } from "../core/runner";
@@ -116,6 +117,7 @@ async function executeOrBlock(
 
 export async function deploy(rawArgs: string[]): Promise<number> {
   const options = parseArgs(rawArgs);
+  const dryRun = getDryRun();
   const logs: string[] = [];
 
   let projectRoot: string;
@@ -126,6 +128,21 @@ export async function deploy(rawArgs: string[]): Promise<number> {
   } catch (error) {
     fail("Config validation failed", error instanceof Error ? error.message : "Unknown error.");
     return 1;
+  }
+
+  if (dryRun) {
+    ok("Planned: git status --porcelain");
+    ok("Planned: git add . (if changes detected)");
+    ok(`Planned: git commit -m "${options.message}" (if changes detected)`);
+    ok("Planned: git push");
+    if (options.prod) {
+      ok("Planned: confirmation prompt for production deploy");
+      ok("Planned: vercel --prod --yes");
+    } else {
+      ok("Planned: vercel deploy --yes");
+    }
+    ok("Deploy dry run complete");
+    return 0;
   }
 
   const statusCheck = await executeOrBlock("git", ["status", "--porcelain"], "Checked git status");

@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
+import { getDryRun } from "../core/dryRun";
 import { getConfig } from "../core/config";
 import { fail, ok, warn } from "../core/reporter";
 import { run, type RunResult } from "../core/runner";
@@ -285,12 +286,14 @@ export async function fixDeploy(rawArgs: string[]): Promise<number> {
   }
   logs.push(commandLog("git", ["push"], pushStep.result));
 
-  if (options.prod) {
+  if (options.prod && !getDryRun()) {
     const confirmed = await confirmProdDeploy();
     if (!confirmed) {
       warn("Production deploy canceled by user");
       return 0;
     }
+  } else if (options.prod) {
+    ok("Dry run: skipped production confirmation prompt");
   }
 
   const vercelArgs = options.prod ? ["--prod", "--yes"] : ["deploy", "--yes"];
