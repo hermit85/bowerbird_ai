@@ -20,52 +20,61 @@ function normalizeLine(line: string): string {
     .replace(/\s+/g, " ");
 }
 
-function parseLine(line: string): ExecutionAction | null {
+type IndexedAction = {
+  index: number;
+  action: ExecutionAction;
+};
+
+function parseLine(line: string): ExecutionAction[] {
   const normalized = normalizeLine(line);
   if (!normalized) {
-    return null;
+    return [];
   }
 
-  if (/\bdeploy\s+preview\b/i.test(normalized)) {
-    return { type: "deploy_preview" };
-  }
-  if (/\bdeploy\s+production\b/i.test(normalized)) {
-    return { type: "deploy_production" };
-  }
-  if (/\brun\s+repair\b/i.test(normalized)) {
-    return { type: "run_repair" };
-  }
-  if (/\bshow\s+logs\b/i.test(normalized)) {
-    return { type: "show_logs" };
-  }
+  const matches: IndexedAction[] = [];
 
-  const envMatch = normalized.match(/\badd\s+env\s+([A-Z0-9_]+)\b/i);
-  if (envMatch?.[1]) {
-    return {
-      type: "env_add",
-      key: envMatch[1].toUpperCase(),
-    };
-  }
+  const pushSimple = (re: RegExp, action: ExecutionAction): void => {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(normalized)) !== null) {
+      matches.push({ index: m.index, action });
+    }
+  };
 
-  const supabaseFunction = normalized.match(/deploy supabase function\s+([a-zA-Z0-9_-]+)/i);
-  if (supabaseFunction?.[1]) {
-    return {
-      type: "deploy_supabase_function",
-      name: supabaseFunction[1],
-    };
-  }
+  const pushCaptured = (re: RegExp, toAction: (match: RegExpExecArray) => ExecutionAction): void => {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(normalized)) !== null) {
+      matches.push({ index: m.index, action: toAction(m) });
+    }
+  };
 
-  return null;
+  pushSimple(/\b(?:deploy\s+preview|run\s+preview\s+deploy|preview\s+deploy)\b/gi, {
+    type: "deploy_preview",
+  });
+  pushSimple(/\b(?:deploy\s+production|run\s+production\s+deploy|production\s+deploy)\b/gi, {
+    type: "deploy_production",
+  });
+  pushSimple(/\b(?:run\s+repair|repair\s+deployment)\b/gi, { type: "run_repair" });
+  pushSimple(/\b(?:show\s+logs|view\s+logs)\b/gi, { type: "show_logs" });
+
+  pushCaptured(/\b(?:add\s+env|set\s+environment\s+variable)\s+([A-Z][A-Z0-9_]*)\b/gi, (m) => ({
+    type: "env_add",
+    key: m[1].toUpperCase(),
+  }));
+
+  pushCaptured(/\bdeploy(?:\s+the)?\s+supabase\s+function\s+([a-zA-Z0-9_-]+)\b/gi, (m) => ({
+    type: "deploy_supabase_function",
+    name: m[1],
+  }));
+
+  matches.sort((a, b) => a.index - b.index);
+  return matches.map((m) => m.action);
 }
 
 export function parseAIInstructions(text: string): ExecutionPlan {
   const actions: ExecutionAction[] = [];
   const lines = text.split(/\r?\n/);
   for (const line of lines) {
-    const parsed = parseLine(line);
-    if (parsed) {
-      actions.push(parsed);
-    }
+    actions.push(...parseLine(line));
   }
   return {
     actions,

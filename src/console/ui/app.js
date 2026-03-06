@@ -114,13 +114,20 @@ function formatExecutionAction(action) {
   return type || "unknown";
 }
 
-function renderAiChatExecutionPlanSection({ loading, text, actions }) {
+function renderAiChatExecutionPlanSection({ loading, text, actions, guidance }) {
   const analyzeBusy = Boolean(loading.aiAnalyzeBtn);
   const runBusy = Boolean(loading.aiRunPlanBtn);
   const hasActions = Array.isArray(actions) && actions.length > 0;
   const actionRows = Array.isArray(actions) && actions.length > 0
     ? actions.map((action, index) => `<li>${index + 1}. ${escapeHtml(formatExecutionAction(action))}</li>`).join("")
     : "<li>No actions detected yet.</li>";
+  const guidanceClass = guidance?.tone === "ok"
+    ? "bg-emerald-100 border-emerald-300 text-emerald-900"
+    : guidance?.tone === "warn"
+      ? "bg-amber-100 border-amber-300 text-amber-900"
+      : guidance?.tone === "hint"
+        ? "bg-sky-100 border-sky-300 text-sky-900"
+        : "bg-slate-100 border-slate-300 text-slate-800";
 
   return `
     <section class="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
@@ -132,11 +139,67 @@ function renderAiChatExecutionPlanSection({ loading, text, actions }) {
         <button id="aiRunPlanBtn" ${runBusy || !hasActions ? "disabled" : ""} class="ml-2 rounded-md bg-emerald-700 text-white px-3 py-2 text-sm ${(runBusy || !hasActions) ? "opacity-60 cursor-not-allowed" : ""}">${runBusy ? "Running..." : "Run Plan"}</button>
       </div>
       <div class="mt-3">
+        <div class="rounded-lg border p-3 ${guidanceClass}">
+          <div class="text-sm font-semibold">${escapeHtml(guidance?.label || "No actions detected")}</div>
+          <div class="text-sm mt-1">${escapeHtml(guidance?.message || "")}</div>
+        </div>
+      </div>
+      <div class="mt-3">
         <div class="text-sm font-medium text-slate-700">Detected Actions</div>
         <ol class="mt-1 list-decimal pl-5 text-sm text-slate-700 space-y-1">${actionRows}</ol>
       </div>
     </section>
   `;
+}
+
+function computeExecutionPlanGuidance(text, actions, status) {
+  const raw = String(text || "");
+  const normalized = raw.toLowerCase().replace(/\s+/g, " ").trim();
+  const detectedActions = Array.isArray(actions) ? actions : [];
+  const hasActions = detectedActions.length > 0;
+
+  const hasAddEnvPhrase = /\badd\s+env\b/.test(normalized) || /\bset\s+environment\s+variable\b/.test(normalized);
+  const hasEnvKey = /\b(?:add\s+env|set\s+environment\s+variable)\s+[A-Z][A-Z0-9_]*\b/i.test(raw);
+  const hasSupabasePhrase = /\bdeploy(?:\s+the)?\s+supabase\s+function\b/.test(normalized);
+  const hasSupabaseName = /\bdeploy(?:\s+the)?\s+supabase\s+function\s+[a-z0-9_-]+\b/i.test(raw);
+
+  if ((hasAddEnvPhrase && !hasEnvKey) || (hasSupabasePhrase && !hasSupabaseName)) {
+    const details = [];
+    if (hasAddEnvPhrase && !hasEnvKey) {
+      details.push("Add an env key, for example: add env DATABASE_URL");
+    }
+    if (hasSupabasePhrase && !hasSupabaseName) {
+      details.push("Add a function name, for example: deploy supabase function generate");
+    }
+    return {
+      label: "Missing information",
+      tone: "warn",
+      message: details.join(" "),
+    };
+  }
+
+  if (hasActions) {
+    return {
+      label: "Ready to run",
+      tone: "ok",
+      message: `Found ${detectedActions.length} action${detectedActions.length === 1 ? "" : "s"} ready for Run Plan.`,
+    };
+  }
+
+  const liveOrConnected = Boolean(status?.vercel?.lastDeployUrl) || Boolean(status?.supabase?.connected);
+  if (liveOrConnected) {
+    return {
+      label: "Recommended next step",
+      tone: "hint",
+      message: "Try: deploy preview, add env DATABASE_URL, or deploy supabase function generate",
+    };
+  }
+
+  return {
+    label: "No actions detected",
+    tone: "neutral",
+    message: "Paste instructions with clear commands like deploy preview or add env DATABASE_URL",
+  };
 }
 
 function App() {
@@ -828,12 +891,13 @@ function App() {
     const hasJobs = Array.isArray(operations) && operations.length > 0;
     const heroState = detectHeroState(status, operations);
     const errorSummary = extractErrorSummary(status);
+    const guidance = computeExecutionPlanGuidance(aiAnalyzeText, aiAnalyzeActions, status);
     return [
       '<div class="max-w-6xl mx-auto p-4 space-y-4" id="appBody">',
       '<h1 class="text-2xl font-bold">BowerBird</h1>',
       '<p class="text-sm text-slate-600">AI builder operator console for command-first shipping.</p>',
       `<div class="text-sm text-slate-600">${escapeHtml(lastAction)}</div>`,
-      renderAiChatExecutionPlanSection({ loading, text: aiAnalyzeText, actions: aiAnalyzeActions }),
+      renderAiChatExecutionPlanSection({ loading, text: aiAnalyzeText, actions: aiAnalyzeActions, guidance }),
       CommandCenterSection({ loading, commandText, commandFocused, heroState, errorSummary, status }),
       ActivitySection({ operations }),
       resultBanner
