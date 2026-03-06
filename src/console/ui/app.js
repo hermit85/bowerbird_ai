@@ -114,10 +114,12 @@ function formatExecutionAction(action) {
   return type || "unknown";
 }
 
-function renderAiChatExecutionPlanSection({ loading, text, actions, guidance }) {
+function renderAiChatExecutionPlanSection({ loading, text, actions, guidance, prodConfirmChecked }) {
   const analyzeBusy = Boolean(loading.aiAnalyzeBtn);
   const runBusy = Boolean(loading.aiRunPlanBtn);
   const hasActions = Array.isArray(actions) && actions.length > 0;
+  const hasProductionDeploy = Array.isArray(actions) && actions.some((action) => String(action?.type) === "deploy_production");
+  const runDisabled = runBusy || !hasActions || (hasProductionDeploy && !prodConfirmChecked);
   const actionRows = Array.isArray(actions) && actions.length > 0
     ? actions.map((action, index) => `<li>${index + 1}. ${escapeHtml(formatExecutionAction(action))}</li>`).join("")
     : "<li>No actions detected yet.</li>";
@@ -136,8 +138,17 @@ function renderAiChatExecutionPlanSection({ loading, text, actions, guidance }) 
       <textarea id="ai-analyze-input" class="mt-2 w-full rounded-md border border-slate-300 p-3 h-28 text-sm" placeholder="Paste AI instructions here...">${escapeHtml(text || "")}</textarea>
       <div class="mt-3">
         <button id="aiAnalyzeBtn" ${analyzeBusy ? "disabled" : ""} class="rounded-md bg-slate-700 text-white px-3 py-2 text-sm ${analyzeBusy ? "opacity-60 cursor-not-allowed" : ""}">${analyzeBusy ? "Analyzing..." : "Analyze"}</button>
-        <button id="aiRunPlanBtn" ${runBusy || !hasActions ? "disabled" : ""} class="ml-2 rounded-md bg-emerald-700 text-white px-3 py-2 text-sm ${(runBusy || !hasActions) ? "opacity-60 cursor-not-allowed" : ""}">${runBusy ? "Running..." : "Run Plan"}</button>
+        <button id="aiRunPlanBtn" ${runDisabled ? "disabled" : ""} class="ml-2 rounded-md bg-emerald-700 text-white px-3 py-2 text-sm ${runDisabled ? "opacity-60 cursor-not-allowed" : ""}">${runBusy ? "Running..." : "Run Plan"}</button>
       </div>
+      ${hasProductionDeploy
+        ? `<div class="mt-3 rounded-lg border border-amber-300 bg-amber-100 p-3 text-amber-900">
+          <div class="text-sm font-semibold">Production deploy detected. Please confirm before running.</div>
+          <label class="mt-2 flex items-center gap-2 text-sm">
+            <input id="prodConfirmCheckbox" type="checkbox" ${prodConfirmChecked ? "checked" : ""} />
+            <span>I confirm production deployment</span>
+          </label>
+        </div>`
+        : ""}
       <div class="mt-3">
         <div class="rounded-lg border p-3 ${guidanceClass}">
           <div class="text-sm font-semibold">${escapeHtml(guidance?.label || "No actions detected")}</div>
@@ -250,6 +261,7 @@ function App() {
   const [chatEmptyMessage, setChatEmptyMessage] = useState("");
   const [aiAnalyzeText, setAiAnalyzeText] = useState("");
   const [aiAnalyzeActions, setAiAnalyzeActions] = useState([]);
+  const [prodConfirmChecked, setProdConfirmChecked] = useState(false);
   const [commandText, setCommandText] = useState("");
   const [commandFocused, setCommandFocused] = useState(false);
   const [instruction, setInstruction] = useState("");
@@ -532,12 +544,14 @@ function App() {
             setAiAnalyzeText(text);
             if (!normalized) {
               setAiAnalyzeActions([]);
+              setProdConfirmChecked(false);
               return "Please paste AI chat text first.";
             }
 
             const data = await postJson("/api/ai/detect", { text });
             const actions = Array.isArray(data.actions) ? data.actions : [];
             setAiAnalyzeActions(actions);
+            setProdConfirmChecked(false);
             if (actions.length === 0) {
               return "No actions detected.";
             }
@@ -561,11 +575,8 @@ function App() {
             }
 
             const hasProdDeploy = aiAnalyzeActions.some((action) => String(action?.type) === "deploy_production");
-            if (hasProdDeploy) {
-              const approved = window.confirm("This plan includes production deployment. Continue?");
-              if (!approved) {
-                return "Canceled by user.";
-              }
+            if (hasProdDeploy && !prodConfirmChecked) {
+              return "Please confirm production deployment first.";
             }
 
             const data = await postJson("/api/ai/run", { text });
@@ -581,6 +592,14 @@ function App() {
               `Jobs queued: ${jobIds.length}`,
             ].join("\n");
           });
+          return;
+        }
+
+        if (target.id === "prodConfirmCheckbox") {
+          const input = target;
+          if (input instanceof HTMLInputElement) {
+            setProdConfirmChecked(input.checked);
+          }
           return;
         }
 
@@ -897,7 +916,7 @@ function App() {
       '<h1 class="text-2xl font-bold">BowerBird</h1>',
       '<p class="text-sm text-slate-600">AI builder operator console for command-first shipping.</p>',
       `<div class="text-sm text-slate-600">${escapeHtml(lastAction)}</div>`,
-      renderAiChatExecutionPlanSection({ loading, text: aiAnalyzeText, actions: aiAnalyzeActions, guidance }),
+      renderAiChatExecutionPlanSection({ loading, text: aiAnalyzeText, actions: aiAnalyzeActions, guidance, prodConfirmChecked }),
       CommandCenterSection({ loading, commandText, commandFocused, heroState, errorSummary, status }),
       ActivitySection({ operations }),
       resultBanner
@@ -934,7 +953,7 @@ function App() {
       "</details>",
       "</div>",
     ].join("");
-  }, [status, capabilities, suggestions, operations, chatText, chatActions, chatEmptyMessage, aiAnalyzeText, aiAnalyzeActions, commandText, commandFocused, instruction, output, loading, lastAction, resultBanner]);
+  }, [status, capabilities, suggestions, operations, chatText, chatActions, chatEmptyMessage, aiAnalyzeText, aiAnalyzeActions, prodConfirmChecked, commandText, commandFocused, instruction, output, loading, lastAction, resultBanner]);
 
   return React.createElement("div", { dangerouslySetInnerHTML: { __html: html } });
 }
