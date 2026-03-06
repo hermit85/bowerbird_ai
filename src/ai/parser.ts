@@ -1,6 +1,8 @@
 export type ExecutionAction =
-  | { type: "deploy_preview" }
-  | { type: "deploy_production" }
+  | { type: "connect_database" }
+  | { type: "deploy_backend_functions" }
+  | { type: "prepare_preview" }
+  | { type: "make_app_live" }
   | { type: "env_add"; key: string; value?: string }
   | { type: "deploy_supabase_function"; name: string }
   | { type: "run_repair" }
@@ -66,11 +68,17 @@ function parseSegment(segment: string): ExecutionAction[] {
     }
   };
 
-  pushSimple(/\b(?:deploy\s+preview|run\s+preview\s+deploy|preview\s+deploy)\b/gi, {
-    type: "deploy_preview",
+  pushSimple(/\b(?:connect(?:\s+the)?\s+database|set\s+up\s+database)\b/gi, {
+    type: "connect_database",
   });
-  pushSimple(/\b(?:deploy\s+production|run\s+production\s+deploy|production\s+deploy)\b/gi, {
-    type: "deploy_production",
+  pushSimple(/\b(?:deploy\s+backend(?:\s+functions?)?)\b/gi, {
+    type: "deploy_backend_functions",
+  });
+  pushSimple(/\b(?:prepare\s+preview|deploy\s+preview|run\s+preview\s+deploy|preview\s+deploy)\b/gi, {
+    type: "prepare_preview",
+  });
+  pushSimple(/\b(?:make\s+app\s+live|go\s+live|deploy\s+production|run\s+production\s+deploy|production\s+deploy)\b/gi, {
+    type: "make_app_live",
   });
   pushSimple(/\b(?:run\s+repair|repair\s+deployment)\b/gi, { type: "run_repair" });
   pushSimple(/\b(?:show\s+logs|view\s+logs)\b/gi, { type: "show_logs" });
@@ -85,6 +93,11 @@ function parseSegment(segment: string): ExecutionAction[] {
     name: m[1],
   }));
 
+  pushSimple(/\blaunch\s+(?:saas|app)\b/gi, { type: "connect_database" });
+  pushSimple(/\blaunch\s+(?:saas|app)\b/gi, { type: "deploy_backend_functions" });
+  pushSimple(/\blaunch\s+(?:saas|app)\b/gi, { type: "prepare_preview" });
+  pushSimple(/\blaunch\s+(?:saas|app)\b/gi, { type: "make_app_live" });
+
   matches.sort((a, b) => a.index - b.index);
   return matches.map((m) => m.action);
 }
@@ -92,8 +105,28 @@ function parseSegment(segment: string): ExecutionAction[] {
 export function parseAIInstructions(text: string): ExecutionPlan {
   const actions: ExecutionAction[] = [];
   const segments = toSegments(text);
+  const seen = new Set<string>();
+
+  const actionKey = (action: ExecutionAction): string => {
+    if (action.type === "env_add") {
+      return `${action.type}:${action.key.toUpperCase()}`;
+    }
+    if (action.type === "deploy_supabase_function") {
+      return `${action.type}:${action.name.toLowerCase()}`;
+    }
+    return action.type;
+  };
+
   for (const segment of segments) {
-    actions.push(...parseSegment(segment));
+    const parsed = parseSegment(segment);
+    for (const action of parsed) {
+      const key = actionKey(action);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      actions.push(action);
+    }
   }
   return {
     actions,

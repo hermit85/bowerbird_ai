@@ -13,7 +13,7 @@ test("parses numbered AI instruction list into deterministic execution plan", ()
   assert.deepEqual(plan, {
     actions: [
       { type: "env_add", key: "DATABASE_URL" },
-      { type: "deploy_preview" },
+      { type: "prepare_preview" },
       { type: "deploy_supabase_function", name: "generate" },
     ],
     rawInput: input,
@@ -34,7 +34,7 @@ add env API_KEY
     actions: [
       { type: "show_logs" },
       { type: "run_repair" },
-      { type: "deploy_production" },
+      { type: "make_app_live" },
       { type: "env_add", key: "API_KEY" },
     ],
     rawInput: input,
@@ -47,8 +47,28 @@ test("returns same plan on repeated parse for determinism", () => {
   const second = parseAIInstructions(input);
   assert.deepEqual(first, second);
   assert.deepEqual(first.actions, [
-    { type: "deploy_preview" },
+    { type: "prepare_preview" },
     { type: "env_add", key: "DATABASE_URL" },
     { type: "show_logs" },
+  ]);
+});
+
+test("parses founder intent phrases into normalized launch actions", () => {
+  const input = "launch SaaS and then make app live";
+  const plan = parseAIInstructions(input);
+  assert.deepEqual(plan.actions, [
+    { type: "connect_database" },
+    { type: "deploy_backend_functions" },
+    { type: "prepare_preview" },
+    { type: "make_app_live" },
+  ]);
+});
+
+test("deduplicates repeated normalized actions while preserving first-seen order", () => {
+  const input = "deploy preview and deploy preview then connect database and connect database";
+  const plan = parseAIInstructions(input);
+  assert.deepEqual(plan.actions, [
+    { type: "prepare_preview" },
+    { type: "connect_database" },
   ]);
 });

@@ -70,18 +70,14 @@ export function CommandCenterSection({ loading, commandText, commandFocused, her
         <div class="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2"><span class="font-medium">Database:</span> ${dbConnected ? "Connected" : "Not connected"}</div>
         <div class="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2"><span class="font-medium">Environment:</span> ${envReady ? "Ready" : "Needs setup"}</div>
       </div>`
-    : `<div class="mt-4 flex gap-2 flex-wrap">
-        ${launchOptions
-          .map((item) => `<button type="button" class="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100" data-command-suggestion="${escapeHtml(item)}">${escapeHtml(item)}</button>`)
-          .join("")}
-      </div>`;
+    : `<div class="mt-4 text-xs text-slate-500">${launchOptions.join(" • ")}</div>`;
 
   return `
     <section class="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
       <h2 class="text-xl font-semibold">${header}</h2>
       <p class="text-sm text-slate-600 mt-1">${subtitle}</p>
       ${topBlock}
-      <label class="text-sm font-medium mt-4 block">What do you want to do?</label>
+      <label class="text-sm font-medium mt-4 block">Optional command input</label>
       <input
         id="command-center-input"
         class="mt-2 w-full rounded-md border border-slate-300 p-3 text-base"

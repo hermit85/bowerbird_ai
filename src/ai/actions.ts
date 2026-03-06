@@ -18,12 +18,20 @@ export function executeAIInstructions(text: string): AIImportSummary {
   const jobIds: string[] = [];
 
   for (const action of actions) {
-    if (action.type === "deploy_preview") {
+    if (action.type === "prepare_preview") {
       jobIds.push(enqueue("deploy_preview").id);
       continue;
     }
-    if (action.type === "deploy_production") {
+    if (action.type === "make_app_live") {
       jobIds.push(enqueue("deploy_production").id);
+      continue;
+    }
+    if (action.type === "deploy_backend_functions") {
+      jobIds.push(enqueue("deploy_supabase_function", { name: "generate" }).id);
+      continue;
+    }
+    if (action.type === "connect_database") {
+      jobIds.push(enqueue("add_env", { key: "DATABASE_URL", value: "", target: "preview" }).id);
       continue;
     }
     if (action.type === "deploy_supabase_function") {
