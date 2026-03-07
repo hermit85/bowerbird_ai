@@ -33,7 +33,7 @@ export function CommandCenterSection({ loading, commandText, commandFocused, her
     return `
       <section class="rounded-xl bg-white p-5 shadow-sm border border-blue-200">
         <h2 class="text-xl font-semibold">Deployment Running</h2>
-        <p class="text-sm text-slate-600 mt-1">BowerBird is currently working through your deployment steps.</p>
+        <p class="text-sm text-slate-600 mt-1">deplo.app is currently working through your deployment steps.</p>
         <ul class="mt-4 space-y-2 text-sm">
           <li>${envReady ? "✓" : "○"} env configured</li>
           <li>${dbConnected ? "✓" : "○"} database connected</li>
@@ -62,7 +62,7 @@ export function CommandCenterSection({ loading, commandText, commandFocused, her
   const header = isLive ? "Your project is live" : "Command Center";
   const subtitle = isLive
     ? "Use commands below to keep shipping."
-    : "Tell BowerBird what to do in plain words.";
+    : "Tell deplo.app what to do in plain words.";
 
   const topBlock = isLive
     ? `<div class="mt-4 grid gap-2 md:grid-cols-3 text-sm">

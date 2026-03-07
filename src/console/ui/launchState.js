@@ -10,6 +10,7 @@ export function getLaunchState(status) {
     backendDeployed: functionsRequired === false ? true : supabaseFunctions.length > 0,
     previewReady: Boolean(lastDeployUrl),
     appLive: /production|make_app_live|deploy_production/.test(lastAction),
+    deployToProduction: false,
   };
 }
 
@@ -65,6 +66,7 @@ export function mergeLaunchState(base, overrides) {
     backendDeployed: Boolean(overrides?.backendDeployed ?? base?.backendDeployed),
     previewReady: Boolean(overrides?.previewReady ?? base?.previewReady),
     appLive: Boolean(overrides?.appLive ?? base?.appLive),
+    deployToProduction: Boolean(overrides?.deployToProduction ?? base?.deployToProduction),
   };
 }
 

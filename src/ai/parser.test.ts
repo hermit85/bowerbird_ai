@@ -11,12 +11,12 @@ test("parses numbered AI instruction list into deterministic execution plan", ()
 
   const plan = parseAIInstructions(input);
   assert.deepEqual(plan, {
-    actions: [
-      { type: "env_add", key: "DATABASE_URL" },
-      { type: "prepare_preview" },
-      { type: "deploy_supabase_function", name: "generate" },
+    intents: [
+      { rawCommand: input, intent: "env_add", key: "DATABASE_URL" },
+      { rawCommand: input, intent: "prepare_preview" },
+      { rawCommand: input, intent: "deploy_supabase_function", name: "generate" },
     ],
-    rawInput: input,
+    rawCommand: input,
   });
 });
 
@@ -31,13 +31,13 @@ add env API_KEY
 
   const plan = parseAIInstructions(input);
   assert.deepEqual(plan, {
-    actions: [
-      { type: "show_logs" },
-      { type: "run_repair" },
-      { type: "make_app_live" },
-      { type: "env_add", key: "API_KEY" },
+    intents: [
+      { rawCommand: input, intent: "show_logs" },
+      { rawCommand: input, intent: "run_repair" },
+      { rawCommand: input, intent: "make_app_live", target: "production" },
+      { rawCommand: input, intent: "env_add", key: "API_KEY" },
     ],
-    rawInput: input,
+    rawCommand: input,
   });
 });
 
@@ -46,29 +46,37 @@ test("returns same plan on repeated parse for determinism", () => {
   const first = parseAIInstructions(input);
   const second = parseAIInstructions(input);
   assert.deepEqual(first, second);
-  assert.deepEqual(first.actions, [
-    { type: "prepare_preview" },
-    { type: "env_add", key: "DATABASE_URL" },
-    { type: "show_logs" },
+  assert.deepEqual(first.intents, [
+    { rawCommand: input, intent: "prepare_preview" },
+    { rawCommand: input, intent: "env_add", key: "DATABASE_URL" },
+    { rawCommand: input, intent: "show_logs" },
   ]);
 });
 
 test("parses founder intent phrases into normalized launch actions", () => {
   const input = "launch SaaS and then make app live";
   const plan = parseAIInstructions(input);
-  assert.deepEqual(plan.actions, [
-    { type: "connect_database" },
-    { type: "deploy_backend_functions" },
-    { type: "prepare_preview" },
-    { type: "make_app_live" },
+  assert.deepEqual(plan.intents, [
+    { rawCommand: input, intent: "launch_application", target: "production" },
+    { rawCommand: input, intent: "make_app_live", target: "production" },
   ]);
 });
 
 test("deduplicates repeated normalized actions while preserving first-seen order", () => {
   const input = "deploy preview and deploy preview then connect database and connect database";
   const plan = parseAIInstructions(input);
-  assert.deepEqual(plan.actions, [
-    { type: "prepare_preview" },
-    { type: "connect_database" },
+  assert.deepEqual(plan.intents, [
+    { rawCommand: input, intent: "prepare_preview" },
+    { rawCommand: input, intent: "connect_database" },
+  ]);
+});
+
+test("parses founder-safe suggestion commands", () => {
+  const input = "deploy backend\nconnect database\ndeploy preview";
+  const plan = parseAIInstructions(input);
+  assert.deepEqual(plan.intents, [
+    { rawCommand: input, intent: "deploy_backend" },
+    { rawCommand: input, intent: "connect_database" },
+    { rawCommand: input, intent: "prepare_preview" },
   ]);
 });

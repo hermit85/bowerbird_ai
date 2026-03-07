@@ -26,7 +26,7 @@ export const vercelAdapter: ProviderAdapter = {
     }
 
     if (capability === "deploy_production") {
-      const code = await deploy(["--prod"]);
+      const code = await deploy(["--prod", "--yes"]);
       return {
         ok: code === 0,
         output: code === 0 ? "Production deployment completed." : "Production deployment failed.",

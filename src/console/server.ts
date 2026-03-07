@@ -3,6 +3,9 @@ import http from "node:http";
 import path from "node:path";
 import { execa } from "execa";
 import { detectAIInstructions, executeAIInstructions } from "../ai/actions";
+import type { AIContext } from "../ai/types";
+import { detectStack } from "../detection/stackDetector";
+import { diagnoseProject, runDoctorAutofix } from "../doctor/projectDoctor";
 import { extractActions } from "../core/actionParser";
 import { runAutoMode, setAutoExecutor } from "../core/autoMode";
 import { detectCapabilities, ensureCapabilities, isActionAllowed, writeCapabilities, type Capabilities } from "../core/capabilities";
@@ -26,6 +29,7 @@ type StatusPayload = {
   project: ProjectState["project"];
   git: ProjectState["git"];
   vercel: ProjectState["vercel"];
+  stack: ReturnType<typeof detectStack>;
   supabase: ProjectState["supabase"] & {
     functionsRequired?: boolean;
   };
@@ -152,6 +156,84 @@ type QueuedOperation = {
   type: string;
   payload?: any;
 };
+
+type CoreFounderAction =
+  | "connect_database"
+  | "deploy_preview"
+  | "deploy_backend"
+  | "make_app_live";
+
+type CoreDispatchPayload = {
+  value?: string;
+  target?: string;
+  functionName?: string;
+  projectRef?: string;
+  confirm?: boolean;
+};
+
+async function dispatchCoreAction(
+  projectRoot: string,
+  action: CoreFounderAction,
+  payload?: CoreDispatchPayload,
+): Promise<{ ok: boolean; message: string; jobIds?: string[]; type?: string }> {
+  if (action === "connect_database") {
+    const value = String(payload?.value ?? "");
+    const target = typeof payload?.target === "string" ? payload.target : "preview";
+    if (!value) {
+      return { ok: false, message: "DATABASE_URL is required." };
+    }
+    const queued = enqueueOperations([{ type: "add_env", payload: { key: "DATABASE_URL", value, target } }]);
+    return {
+      ok: true,
+      message: "Job queued: connect database",
+      jobIds: queued.jobIds,
+      type: "add_env",
+    };
+  }
+
+  if (action === "deploy_preview") {
+    const queued = enqueueOperations([{ type: "deploy_preview" }]);
+    return {
+      ok: true,
+      message: "Job queued: deploy preview",
+      jobIds: queued.jobIds,
+      type: "deploy_preview",
+    };
+  }
+
+  if (action === "deploy_backend") {
+    const functionName = String(payload?.functionName ?? "generate").trim() || "generate";
+    const projectRef = String(payload?.projectRef ?? "").trim();
+    const mapped = await mapInstructionToJobs(
+      projectRoot,
+      projectRef
+        ? `deploy supabase function ${functionName} --project-ref ${projectRef}`
+        : `deploy supabase function ${functionName}`,
+    );
+    const queued = enqueueOperations(mapped);
+    return {
+      ok: true,
+      message: "Job queued: deploy backend",
+      jobIds: queued.jobIds,
+      type: "deploy_supabase_function",
+    };
+  }
+
+  if (action === "make_app_live") {
+    if (payload?.confirm !== true) {
+      return { ok: false, message: "Production deploy requires explicit confirmation." };
+    }
+    const queued = enqueueOperations([{ type: "deploy_production" }]);
+    return {
+      ok: true,
+      message: "Job queued: make app live",
+      jobIds: queued.jobIds,
+      type: "deploy_production",
+    };
+  }
+
+  return { ok: false, message: `Unsupported core action: ${action}` };
+}
 
 async function mapInstructionToJobs(projectRoot: string, instruction: string, payload?: any): Promise<QueuedOperation[]> {
   const normalized = instruction.trim();
@@ -315,6 +397,7 @@ async function getStatus(): Promise<StatusPayload> {
   const { projectRoot } = await getConfig();
   const metaDir = path.resolve(projectRoot, ".bowerbird");
   const state = await readState(projectRoot);
+  const stack = detectStack(projectRoot);
 
   const branchResult = await runStatusCommand("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
   const vercelWhoami = await runStatusCommand("vercel", ["whoami"]);
@@ -364,6 +447,7 @@ async function getStatus(): Promise<StatusPayload> {
     project: resolvedState.project,
     git: resolvedState.git,
     vercel: resolvedState.vercel,
+    stack,
     supabase: {
       ...resolvedState.supabase,
       functionsRequired: deployableFunctions.length > 0,
@@ -376,6 +460,24 @@ async function getStatus(): Promise<StatusPayload> {
     lastDeployLog: await readMaybe(path.resolve(metaDir, "last_deploy_log.txt")),
     lastApplyPatchLog: await readMaybe(path.resolve(metaDir, "last_apply_patch_log.txt")),
     providerMappings: getProviderMappings(),
+  };
+}
+
+function createAIContextFromState(
+  state: ProjectState,
+  stack: ReturnType<typeof detectStack>,
+): AIContext {
+  const knownKeys = Array.isArray(state.env.knownKeys) ? state.env.knownKeys : [];
+  const functions = Array.isArray(state.supabase.functions) ? state.supabase.functions : [];
+  const lastAction = String(state.activity.lastAction || "").toLowerCase();
+  return {
+    stack,
+    launch: {
+      databaseConnected: knownKeys.includes("DATABASE_URL"),
+      backendDeployed: functions.length > 0,
+      previewReady: Boolean(state.vercel.lastDeployUrl),
+      appLive: /production|make_app_live|deploy_production/.test(lastAction),
+    },
   };
 }
 
@@ -494,6 +596,42 @@ async function handleApi(request: http.IncomingMessage, response: http.ServerRes
     }
   }
 
+  if (request.method === "GET" && url.pathname === "/api/doctor") {
+    try {
+      const report = await diagnoseProject();
+      json(response, 200, report);
+      return;
+    } catch (error) {
+      json(response, 500, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Failed to run doctor.",
+      });
+      return;
+    }
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/doctor/fix") {
+    type DoctorFixBody = { actionId?: string };
+    const body = await readJsonBody<DoctorFixBody>(request);
+    const actionId = body?.actionId?.trim();
+    if (!actionId) {
+      json(response, 400, { ok: false, message: "actionId is required." });
+      return;
+    }
+    const result = await runDoctorAutofix(actionId);
+    if (!result.ok) {
+      json(response, 400, { ok: false, message: result.message });
+      return;
+    }
+    const report = await diagnoseProject();
+    json(response, 200, {
+      ok: true,
+      message: result.message,
+      report,
+    });
+    return;
+  }
+
   if (request.method === "GET" && url.pathname === "/api/operations") {
     json(response, 200, getAllJobs());
     return;
@@ -575,6 +713,26 @@ async function handleApi(request: http.IncomingMessage, response: http.ServerRes
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/api/actions/dispatch") {
+    type DispatchBody = { action?: CoreFounderAction; payload?: CoreDispatchPayload };
+    const body = await readJsonBody<DispatchBody>(request);
+    const action = body?.action;
+    if (!action) {
+      json(response, 400, { ok: false, message: "action is required." });
+      return;
+    }
+    let projectRoot = process.cwd();
+    try {
+      const config = await getConfig();
+      projectRoot = config.projectRoot;
+    } catch {
+      // keep cwd fallback
+    }
+    const result = await dispatchCoreAction(projectRoot, action, body?.payload);
+    json(response, result.ok ? 200 : 400, result);
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/api/chat/parse") {
     const body = await readJsonBody<{ text?: string }>(request);
     const text = body?.text ?? "";
@@ -586,7 +744,17 @@ async function handleApi(request: http.IncomingMessage, response: http.ServerRes
   if (request.method === "POST" && url.pathname === "/api/ai/import") {
     const body = await readJsonBody<{ text?: string }>(request);
     const text = body?.text ?? "";
-    const summary = executeAIInstructions(text);
+    let projectRoot = process.cwd();
+    try {
+      const config = await getConfig();
+      projectRoot = config.projectRoot;
+    } catch {
+      // Keep cwd fallback.
+    }
+    const stack = detectStack(projectRoot);
+    const state = await readState(projectRoot);
+    const context = createAIContextFromState(state, stack);
+    const summary = executeAIInstructions(text, context);
     json(response, 200, summary);
     return;
   }
@@ -594,10 +762,23 @@ async function handleApi(request: http.IncomingMessage, response: http.ServerRes
   if (request.method === "POST" && url.pathname === "/api/ai/detect") {
     const body = await readJsonBody<{ text?: string }>(request);
     const text = body?.text ?? "";
-    const plan = detectAIInstructions(text);
+    let projectRoot = process.cwd();
+    try {
+      const config = await getConfig();
+      projectRoot = config.projectRoot;
+    } catch {
+      // Keep cwd fallback.
+    }
+    const stack = detectStack(projectRoot);
+    const state = await readState(projectRoot);
+    const context = createAIContextFromState(state, stack);
+    const plan = detectAIInstructions(text, context);
     json(response, 200, {
       actionsDetected: plan.actions.length,
       actions: plan.actions,
+      reasoning: plan.reasoning,
+      intents: plan.intents,
+      stack,
     });
     return;
   }
@@ -605,7 +786,17 @@ async function handleApi(request: http.IncomingMessage, response: http.ServerRes
   if (request.method === "POST" && url.pathname === "/api/ai/run") {
     const body = await readJsonBody<{ text?: string }>(request);
     const text = body?.text ?? "";
-    const summary = executeAIInstructions(text);
+    let projectRoot = process.cwd();
+    try {
+      const config = await getConfig();
+      projectRoot = config.projectRoot;
+    } catch {
+      // Keep cwd fallback.
+    }
+    const stack = detectStack(projectRoot);
+    const state = await readState(projectRoot);
+    const context = createAIContextFromState(state, stack);
+    const summary = executeAIInstructions(text, context);
     json(response, 200, summary);
     return;
   }
@@ -700,14 +891,36 @@ async function handleApi(request: http.IncomingMessage, response: http.ServerRes
   }
 
   if (request.method === "POST" && url.pathname === "/api/deploy/preview") {
-    const job = enqueueJob("deploy_preview");
-    json(response, 200, { ok: true, message: "Job queued", jobId: job.id, type: "deploy_preview" });
+    let projectRoot = process.cwd();
+    try {
+      const config = await getConfig();
+      projectRoot = config.projectRoot;
+    } catch {
+      // keep cwd fallback
+    }
+    const result = await dispatchCoreAction(projectRoot, "deploy_preview");
+    if (result.ok && result.jobIds && result.jobIds.length > 0) {
+      json(response, 200, { ...result, jobId: result.jobIds[0] });
+      return;
+    }
+    json(response, 400, result);
     return;
   }
 
   if (request.method === "POST" && url.pathname === "/api/deploy/prod") {
-    const job = enqueueJob("deploy_production");
-    json(response, 200, { ok: true, message: "Job queued", jobId: job.id, type: "deploy_production" });
+    let projectRoot = process.cwd();
+    try {
+      const config = await getConfig();
+      projectRoot = config.projectRoot;
+    } catch {
+      // keep cwd fallback
+    }
+    const result = await dispatchCoreAction(projectRoot, "make_app_live", { confirm: true });
+    if (result.ok && result.jobIds && result.jobIds.length > 0) {
+      json(response, 200, { ...result, jobId: result.jobIds[0] });
+      return;
+    }
+    json(response, 400, result);
     return;
   }
 
@@ -843,7 +1056,7 @@ export async function startConsoleServer(): Promise<number> {
     return 1;
   }
 
-  ok(`BowerBird console running at http://${HOST}:${finalPort}`);
+  ok(`deplo.app console running at http://${HOST}:${finalPort}`);
   warn("Press Ctrl+C to stop the server.");
 
   return await new Promise<number>((resolve) => {

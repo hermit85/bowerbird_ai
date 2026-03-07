@@ -1,4 +1,4 @@
-# BowerBird Project Profile
+# deplo.app Project Profile
 
 ## 1) Project
 - name: bowerbird_ai
@@ -16,10 +16,10 @@
 - supabase: connected
 - known env keys (names only): API_KEY, DATABASE_URL
 
-## 4) BowerBird Rules
+## 4) deplo.app Rules
 - use preview deploys by default
 - never print env values
-- use BowerBird for infra operations
+- use deplo.app for infra operations
 - prefer queue/worker/provider adapter flow
 - use repair flow on deploy failure
 
@@ -33,5 +33,4 @@
 - Database migrations: no
 
 ## 6) AI Usage Hint
-Before suggesting infra steps, read this file and prefer BowerBird commands.
-
+Before suggesting infra steps, read this file and prefer deplo.app commands.

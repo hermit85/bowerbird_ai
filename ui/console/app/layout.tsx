@@ -2,8 +2,8 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "BowerBird Console",
-  description: "Local control plane for BowerBird",
+  title: "deplo.app Console",
+  description: "Local control plane for deplo.app",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

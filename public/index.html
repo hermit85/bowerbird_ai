@@ -1,16 +1,619 @@
 <!doctype html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>BowerBird AI</title>
-</head>
-<body>
-<h1>BowerBird AI</h1>
-<p>AI operator for vibe coders.</p>
-<p>Commands:</p>
-<ul>
-<li>bowerbird doctor</li>
-<li>bowerbird deploy</li>
-</ul>
-</body>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>deplo.app | Prompt to Live App</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap");
+
+      :root {
+        --bg: #f5f8fb;
+        --card: #ffffff;
+        --text: #0f172a;
+        --muted: #475569;
+        --line: rgba(148, 163, 184, 0.28);
+        --primary: #047857;
+        --primary-dark: #065f46;
+        --surface-guidance: rgba(16, 185, 129, 0.08);
+        --surface-assistant: rgba(14, 165, 233, 0.06);
+        --radius-sm: 14px;
+        --radius-md: 18px;
+        --radius-lg: 24px;
+        --shadow-soft: 0 10px 26px rgba(15, 23, 42, 0.05);
+        --shadow-medium: 0 16px 36px rgba(15, 23, 42, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Geist", "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+        background:
+          radial-gradient(circle at 82% 6%, rgba(16, 185, 129, 0.09) 0%, rgba(16, 185, 129, 0) 34%),
+          radial-gradient(circle at 12% 2%, rgba(56, 189, 248, 0.08) 0%, rgba(56, 189, 248, 0) 30%),
+          var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+      }
+
+      .page {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 28px 20px 80px;
+      }
+
+      .section {
+        margin-top: 84px;
+      }
+
+      .eyebrow {
+        display: inline-block;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: #0f766e;
+        background: #ecfeff;
+        border: 1px solid #bae6fd;
+        padding: 4px 10px;
+        border-radius: 999px;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        letter-spacing: -0.02em;
+      }
+
+      h1 {
+        font-size: clamp(2.1rem, 4.2vw, 3.3rem);
+        line-height: 1.06;
+      }
+
+      h2 {
+        font-size: clamp(1.6rem, 2.8vw, 2.2rem);
+        line-height: 1.12;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .hero {
+        margin-top: 10px;
+        min-height: calc(92vh - 48px);
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        align-items: center;
+        position: relative;
+        border-radius: calc(var(--radius-lg) + 4px);
+        border: 1px solid var(--line);
+        background:
+          radial-gradient(circle at 12% 16%, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0) 34%),
+          radial-gradient(circle at 88% 12%, rgba(14, 165, 233, 0.11) 0%, rgba(14, 165, 233, 0) 36%),
+          rgba(255, 255, 255, 0.72);
+        box-shadow: var(--shadow-medium);
+        padding: 34px;
+        overflow: hidden;
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: auto -80px -120px auto;
+        width: 320px;
+        height: 320px;
+        border-radius: 999px;
+        background: radial-gradient(circle, rgba(16, 185, 129, 0.12) 0%, rgba(16, 185, 129, 0) 70%);
+        pointer-events: none;
+      }
+
+      .hero-copy p {
+        margin-top: 14px;
+        font-size: 1.01rem;
+        max-width: 48ch;
+      }
+
+      .cta-row {
+        margin-top: 18px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.96rem;
+        padding: 11px 19px;
+        border: 1px solid transparent;
+        transition: all 0.2s ease;
+      }
+
+      .btn-primary {
+        background: var(--primary);
+        color: #ffffff;
+        box-shadow: var(--shadow-soft);
+      }
+
+      .btn-primary:hover {
+        background: var(--primary-dark);
+        transform: translateY(-1px);
+      }
+
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.85);
+        color: #0f172a;
+        border-color: rgba(148, 163, 184, 0.42);
+      }
+
+      .btn-secondary:hover {
+        background: rgba(255, 255, 255, 1);
+        transform: translateY(-1px);
+      }
+
+      .proof-list {
+        margin-top: 14px;
+        list-style: none;
+        padding: 0;
+        display: grid;
+        gap: 7px;
+      }
+
+      .proof-list li {
+        display: flex;
+        gap: 9px;
+        color: #334155;
+        font-size: 0.9rem;
+      }
+
+      .proof-list li::before {
+        content: "✓";
+        color: #047857;
+        font-weight: 700;
+      }
+
+      .hero-cred {
+        margin-top: 10px;
+        font-size: 0.83rem;
+        color: #64748b;
+      }
+
+      .product-mock {
+        background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%);
+        color: #e2e8f0;
+        border-radius: var(--radius-md);
+        box-shadow: 0 22px 48px rgba(2, 6, 23, 0.2);
+        border: 1px solid rgba(148, 163, 184, 0.26);
+        overflow: hidden;
+      }
+
+      .mock-head {
+        padding: 10px 14px;
+        border-bottom: 1px solid #334155;
+        font-size: 0.78rem;
+        color: #94a3b8;
+        background: rgba(15, 23, 42, 0.65);
+      }
+
+      .mock-body {
+        padding: 16px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .mock-card {
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: var(--radius-sm);
+        padding: 9px 10px;
+      }
+
+      .mock-title {
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #94a3b8;
+      }
+
+      .mock-value {
+        margin-top: 5px;
+        font-size: 0.88rem;
+        color: #f8fafc;
+      }
+
+      .mock-step {
+        display: inline-block;
+        margin-bottom: 4px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        font-size: 0.65rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #cbd5e1;
+        border: 1px solid #475569;
+        background: rgba(15, 23, 42, 0.55);
+      }
+
+      .mock-warning {
+        background: rgba(120, 53, 15, 0.35);
+        border-color: rgba(245, 158, 11, 0.4);
+      }
+
+      .mock-success {
+        background: rgba(6, 95, 70, 0.35);
+        border-color: rgba(16, 185, 129, 0.42);
+      }
+
+      .mock-arrow {
+        text-align: center;
+        color: #64748b;
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .grid-3 {
+        margin-top: 20px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .section-plain p {
+        max-width: 56ch;
+      }
+
+      .section-highlight {
+        padding: 20px 22px;
+        border-radius: var(--radius-md);
+        background: linear-gradient(180deg, rgba(16, 185, 129, 0.07) 0%, rgba(56, 189, 248, 0.05) 100%);
+        border: 1px solid var(--line);
+      }
+
+      .section-soft {
+        padding: 18px 20px;
+        border-radius: var(--radius-md);
+        background: rgba(255, 255, 255, 0.74);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+        padding: 18px;
+        box-shadow: var(--shadow-soft);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .card:hover {
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-medium);
+      }
+
+      .card h3 {
+        font-size: 1.05rem;
+      }
+
+      .card p {
+        margin-top: 7px;
+        font-size: 0.9rem;
+      }
+
+      .steps {
+        margin-top: 20px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 36px 1fr;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .step-num {
+        width: 36px;
+        height: 36px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: #dcfce7;
+        color: #065f46;
+        font-weight: 700;
+      }
+
+      .tool-row {
+        margin-top: 18px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .tool-pill {
+        font-size: 0.86rem;
+        padding: 7px 11px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.82);
+        color: #334155;
+      }
+
+      .final-cta {
+        text-align: center;
+        background: linear-gradient(180deg, rgba(16, 185, 129, 0.05) 0%, #ffffff 44%);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        padding: 34px 20px;
+        box-shadow: var(--shadow-medium);
+      }
+
+      .waitlist {
+        margin-top: 20px;
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+      }
+
+      .waitlist input {
+        border: 1px solid rgba(148, 163, 184, 0.42);
+        border-radius: 999px;
+        padding: 10px 12px;
+        font-size: 0.95rem;
+        min-width: 220px;
+        background: rgba(255, 255, 255, 0.92);
+      }
+
+      .waitlist button {
+        border: 0;
+        border-radius: 999px;
+        background: var(--primary);
+        color: #fff;
+        padding: 10px 14px;
+        font-weight: 600;
+        box-shadow: var(--shadow-soft);
+      }
+
+      .small-note {
+        margin-top: 10px;
+        font-size: 0.82rem;
+        color: #64748b;
+      }
+
+      .social-proof {
+        text-align: center;
+      }
+
+      .cred-strip {
+        margin: 0 auto;
+        max-width: 64ch;
+        padding: 14px 18px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(16, 185, 129, 0.08) 0%, rgba(255, 255, 255, 0.92) 48%, rgba(56, 189, 248, 0.08) 100%);
+        color: #334155;
+        font-size: 0.94rem;
+        box-shadow: var(--shadow-soft);
+      }
+
+      .section:nth-of-type(2) {
+        margin-top: 72px;
+      }
+
+      .section:nth-of-type(3),
+      .section:nth-of-type(4) {
+        margin-top: 74px;
+      }
+
+      .cred-strip strong {
+        color: #0f172a;
+      }
+
+      @media (max-width: 900px) {
+        .page {
+          padding: 18px 16px 68px;
+        }
+
+        .hero {
+          min-height: auto;
+          grid-template-columns: 1fr;
+          gap: 14px;
+          margin-top: 4px;
+          padding: 20px;
+        }
+
+        h1 {
+          font-size: clamp(1.85rem, 8vw, 2.25rem);
+          line-height: 1.08;
+        }
+
+        .hero-copy p {
+          font-size: 0.95rem;
+          margin-top: 10px;
+        }
+
+        .cta-row {
+          margin-top: 14px;
+          gap: 8px;
+        }
+
+        .proof-list {
+          margin-top: 12px;
+          gap: 5px;
+        }
+
+        .proof-list li {
+          font-size: 0.84rem;
+        }
+
+        .proof-list code {
+          font-size: 0.82rem;
+        }
+
+        .hero-cred {
+          margin-top: 8px;
+          font-size: 0.8rem;
+        }
+
+        .section {
+          margin-top: 64px;
+        }
+
+        .grid-3 {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero" id="top">
+        <div class="hero-copy">
+          <span class="eyebrow">deplo.app</span>
+          <h1>Turn your idea into something useful</h1>
+          <p>
+            You have an app idea, but finishing it can feel confusing and stressful.
+            deplo.app shows simple next steps and handles safe technical work for you.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="#waitlist">Get early access</a>
+            <a class="btn btn-secondary" href="#solution">See how it works</a>
+          </div>
+          <ul class="proof-list">
+            <li>Say what you want to make, like “a recipe app for my mom” or “a booking page for my brother’s workshop”</li>
+            <li>See what is missing before you get stuck</li>
+            <li>Safe fixes happen automatically — you approve sensitive changes</li>
+          </ul>
+          <p class="hero-cred">You do not need technical words. Describe your goal and deplo.app guides the rest.</p>
+        </div>
+        <div class="product-mock" aria-label="deplo.app product mockup">
+          <div class="mock-head">deplo.app</div>
+          <div class="mock-body">
+            <div class="mock-card">
+              <span class="mock-step">1. You describe your idea</span>
+              <div class="mock-title">Your goal</div>
+              <div class="mock-value">“Make a booking page for my workshop”</div>
+            </div>
+            <div class="mock-arrow">→ guided check</div>
+            <div class="mock-card mock-warning">
+              <span class="mock-step">2. deplo.app checks what is needed</span>
+              <div class="mock-title">What we found</div>
+              <div class="mock-value">We need one account connection to publish your app.</div>
+            </div>
+            <div class="mock-arrow">→ safe fix</div>
+            <div class="mock-card mock-success">
+              <span class="mock-step">3. Safe fixes happen automatically</span>
+              <div class="mock-title">Result</div>
+              <div class="mock-value">Connected what was missing and rechecked everything.</div>
+            </div>
+            <div class="mock-card">
+              <span class="mock-step">4. You see the next simple step</span>
+              <div class="mock-title">Progress</div>
+              <div class="mock-value">Ready now: create a test version to review and share.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-plain">
+        <h2>You should not need technical language to build something useful.</h2>
+        <p style="margin-top: 14px; max-width: 72ch;">
+          deplo.app helps you go from idea to first version without technical stress.
+        </p>
+      </section>
+
+      <section class="section section-highlight" id="solution">
+        <h2>deplo.app guides the next step and handles the tricky parts</h2>
+        <div class="grid-3">
+          <article class="card">
+            <h3>Describe what you want to make</h3>
+            <p>Use normal language, like talking to a helpful teammate.</p>
+          </article>
+          <article class="card">
+            <h3>Get clear next steps</h3>
+            <p>See what is still missing before you get stuck or overwhelmed.</p>
+          </article>
+          <article class="card">
+            <h3>Stay safe and in control</h3>
+            <p>deplo.app handles safe steps automatically and asks before sensitive ones.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section section-soft">
+        <h2>How deplo.app moves you forward</h2>
+        <div class="grid-3">
+          <article class="card">
+            <h3>Tell it your goal</h3>
+            <p>“Make a recipe app for my mom.”</p>
+          </article>
+          <article class="card">
+            <h3>Get what is needed</h3>
+            <p>“We need one connection before you can share this.”</p>
+          </article>
+          <article class="card">
+            <h3>Move forward with confidence</h3>
+            <p>“First version is ready. One thing left. You can share soon.”</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section section-plain">
+        <h2>More people have ideas. Fewer people get guided all the way through.</h2>
+        <p style="margin-top: 14px; max-width: 72ch;">
+          deplo.app keeps momentum by turning confusing steps into simple progress.
+        </p>
+      </section>
+
+      <section class="section social-proof">
+        <p class="cred-strip"><strong>Works with the tools builders already use</strong> — no new workflow, migration, or platform switch required.</p>
+      </section>
+
+      <section class="section section-plain">
+        <h2>Built for normal people with useful ideas</h2>
+        <p style="margin-top: 14px; max-width: 72ch;">
+          Make tools for your family, work, classes, hobbies, or small business — like a dog care app, class website, or simple business helper.
+        </p>
+        <div class="tool-row" aria-label="Ecosystem tools">
+          <span class="tool-pill">Cursor</span>
+          <span class="tool-pill">Codex</span>
+          <span class="tool-pill">Claude</span>
+          <span class="tool-pill">Vercel</span>
+          <span class="tool-pill">Supabase</span>
+        </div>
+      </section>
+
+      <section class="section final-cta" id="waitlist">
+        <h2>Stop getting stuck between “it works” and “it’s live.”</h2>
+        <div class="cta-row" style="justify-content: center; margin-top: 18px;">
+          <a class="btn btn-primary" href="#waitlist">Get early access</a>
+        </div>
+        <form class="waitlist" action="mailto:hello@deplo.app" method="post" enctype="text/plain">
+          <input type="email" name="email" placeholder="Your email" required />
+          <button type="submit">Request access</button>
+        </form>
+        <p class="small-note">We’ll email onboarding updates and invite access.</p>
+        <p class="small-note">
+          Prefer email? Reach us directly at <a href="mailto:hello@deplo.app">hello@deplo.app</a>.
+        </p>
+      </section>
+    </main>
+  </body>
 </html>

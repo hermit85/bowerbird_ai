@@ -1,11 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "https://esm.sh/react@18";
 import { createRoot } from "https://esm.sh/react-dom@18/client";
 import { AutoModeSection } from "/components/autoModeSection.js";
-import { CommandCenterSection } from "/components/commandCenterSection.js";
 import { ExecutionQueueSection } from "/components/executionQueueSection.js";
-import { ProjectHealthSection } from "/components/projectHealthSection.js";
 import { StatusSection } from "/components/statusSection.js";
-import { SuggestionsSection } from "/components/suggestionsSection.js";
 import { ChatImportSection } from "/components/chatImportSection.js";
 import { MacrosSection } from "/components/macrosSection.js";
 import { QuickActionsSection } from "/components/quickActionsSection.js";
@@ -13,9 +10,11 @@ import { InstructionSection } from "/components/instructionSection.js";
 import { RepairSection } from "/components/repairSection.js";
 import { DeploymentSection } from "/components/deploymentSection.js";
 import { EnvironmentSection } from "/components/environmentSection.js";
-import { getLaunchChecklist, getLaunchState, getNextRecommendedAction, isProjectLive, mergeLaunchState } from "/launchState.js";
+import { DoctorSection } from "/components/doctorSection.js";
+import { OperationTimeline, buildTimeline, computeOutcome } from "/components/operationTimeline.js";
+import { getLaunchChecklist, getLaunchState, isProjectLive, mergeLaunchState } from "/launchState.js";
 
-console.log("BowerBird UI loaded");
+console.log("deplo.app UI loaded");
 
 const ALL_MACROS = [
   {
@@ -128,12 +127,12 @@ function normalizeLaunchOperation(action) {
 }
 
 function launchOperationLabel(operation) {
-  if (operation === "connect_database") return "Connect database";
-  if (operation === "deploy_backend_functions") return "Deploy backend functions";
-  if (operation === "prepare_preview") return "Prepare preview";
-  if (operation === "make_app_live") return "Make app live";
-  if (operation === "show_logs") return "Show logs";
-  if (operation === "run_repair") return "Run repair";
+  if (operation === "connect_database") return "Connected your app";
+  if (operation === "deploy_backend_functions") return "Connected what was missing";
+  if (operation === "prepare_preview") return "Prepared a test version";
+  if (operation === "make_app_live") return "Ready for publishing";
+  if (operation === "show_logs") return "Show details";
+  if (operation === "run_repair") return "Try a guided fix";
   return operation || "Operation";
 }
 
@@ -171,19 +170,68 @@ function createCompletionSnapshot(launchState) {
 
 function friendlyIntent(action) {
   const type = String(action?.type || "");
-  if (type === "prepare_preview") return "Prepare your app and deploy a preview version";
-  if (type === "make_app_live") return "Make your app live for users";
-  if (type === "connect_database") return "Connect your app to its database";
-  if (type === "deploy_backend_functions") return "Deploy backend functions for your app";
-  if (type === "env_add") return "Connect your app to its database";
-  if (type === "deploy_supabase_function") return "Deploy backend functions for your app";
-  if (type === "show_logs") return "Show application logs";
-  if (type === "run_repair") return "Attempt to fix the deployment";
-  return "Run infrastructure operation";
+  if (type === "prepare_preview") return "Prepare a test version you can review";
+  if (type === "make_app_live") return "Publish your app for real people";
+  if (type === "connect_database") return "Connect your app so it can save data";
+  if (type === "deploy_backend_functions") return "Set up app features that run in the background";
+  if (type === "env_add") return "Connect your app so it can save data";
+  if (type === "deploy_supabase_function") return "Set up app features that run in the background";
+  if (type === "show_logs") return "Show more details";
+  if (type === "run_repair") return "Try a guided fix";
+  return "Run this guided step";
 }
 
-function renderFounderSetupProgress(launchState, loading, launchProgress, launchStepStates) {
+function getEnvironmentStatusFromDoctor(doctorReport) {
+  const overall = String(doctorReport?.overall || "").trim().toLowerCase();
+  if (overall === "ready") {
+    return { label: "Ready", severity: "ready" };
+  }
+  if (overall === "warning") {
+    return { label: "Needs attention", severity: "warning" };
+  }
+  if (overall === "blocked") {
+    return { label: "Blocked", severity: "blocked" };
+  }
+  return { label: "Checking", severity: "checking" };
+}
+
+function getDoctorAutofixActions(doctorReport) {
+  const actions = Array.isArray(doctorReport?.actions) ? doctorReport.actions : [];
+  return actions.filter((action) => String(action?.type || "") === "autofix" && String(action?.id || "").trim());
+}
+
+function getPrimaryNextActionState(doctorReport) {
+  const environment = getEnvironmentStatusFromDoctor(doctorReport);
+  const hasAutofix = getDoctorAutofixActions(doctorReport).length > 0;
+  if (environment.severity === "blocked") {
+    return {
+      mode: hasAutofix ? "setup_fix" : "setup_open",
+      subtitle: "Fix setup issues first before launching your app",
+      buttonLabel: hasAutofix ? "Fix environment" : "Open Doctor",
+      loadingLabel: hasAutofix ? "Applying safe fixes..." : "Opening Doctor...",
+    };
+  }
+  if (environment.severity === "warning") {
+    return {
+      mode: hasAutofix ? "setup_fix" : "setup_open",
+      subtitle: "Resolve setup issues first before launching your app",
+      buttonLabel: hasAutofix ? "Fix environment" : "Open Doctor",
+      loadingLabel: hasAutofix ? "Applying safe fixes..." : "Opening Doctor...",
+    };
+  }
+  return {
+    mode: "shipping",
+    subtitle: "Launch your app",
+    buttonLabel: "Launch my app",
+    loadingLabel: "Launching...",
+  };
+}
+
+function renderFounderSetupProgress(launchState, loading, launchProgress, launchStepStates, doctorReport) {
   const steps = getLaunchChecklist(launchState);
+  const nextAction = getPrimaryNextActionState(doctorReport);
+  const environment = getEnvironmentStatusFromDoctor(doctorReport);
+  const isSetupFirst = nextAction.mode !== "shipping";
 
   const allDone = steps.every((step) => step.done);
   const hasIncomplete = steps.some((step) => !step.done);
@@ -195,138 +243,178 @@ function renderFounderSetupProgress(launchState, loading, launchProgress, launch
       if (displayState === "completed") {
         return `<li class="py-1 text-sm text-emerald-800">✓ ${step.label}</li>`;
       }
+      const indicator = displayState === "running"
+        ? '<span class="inline-block mr-2 text-blue-700 animate-pulse">●</span>'
+        : '<span class="inline-block mr-2 text-slate-500">→</span>';
       return `<li class="py-1">
         <button
           id="${step.id}"
           data-step-instruction="${step.instruction}"
           ${step.requiresConfirm ? 'data-step-confirm="production"' : ""}
           ${busy || displayState === "running" ? "disabled" : ""}
-          class="w-full text-left text-sm rounded-md px-2 py-1 border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition ${(busy || displayState === "running") ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}"
-        >${displayState === "running" ? `▶ ${step.label}` : `□ ${step.label}`}</button>
+          class="w-full text-left text-sm rounded-xl px-2.5 py-1.5 border border-slate-200/80 bg-white/70 text-slate-700 hover:bg-white hover:border-slate-300 transition ${(busy || displayState === "running") ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}"
+        >${indicator}${step.label}</button>
       </li>`;
     })
     .join("");
 
+  const guidanceBanner = environment.severity === "blocked"
+    ? `<div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50/90 p-4">
+      <div class="text-xs font-semibold tracking-wide text-rose-700">Setup needed now</div>
+      <p class="mt-1 text-sm text-rose-900">We found setup blockers. We will guide you step by step so you can keep moving.</p>
+    </div>`
+    : environment.severity === "warning"
+      ? `<div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50/90 p-4">
+        <div class="text-xs font-semibold tracking-wide text-amber-700">Setup needs attention</div>
+        <p class="mt-1 text-sm text-amber-900">Safe fixes run automatically, and production actions still require your approval.</p>
+      </div>`
+      : `<div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/90 p-4">
+        <div class="text-xs font-semibold tracking-wide text-emerald-700">Ready to move</div>
+        <p class="mt-1 text-sm text-emerald-900">Here is the fastest safe step forward.</p>
+      </div>`;
+
   return `
-    <section class="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
-      <h2 class="text-xl font-semibold">Launch your app</h2>
+    <section class="mt-8 rounded-3xl bg-gradient-to-b from-emerald-50/70 to-white/90 p-6 shadow-medium border border-emerald-100/70 transition-all duration-200">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-2xl font-semibold text-slate-900">Next best step</h2>
+          <p class="text-sm text-slate-600 mt-1">${escapeHtml(nextAction.subtitle)}</p>
+          <p class="mt-2 text-xs text-slate-500">You are guided step by step. Safe fixes run automatically, and you approve risky actions.</p>
+        </div>
+        <span class="rounded-full px-3 py-1 text-xs font-medium ${isSetupFirst ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}">${isSetupFirst ? "Setup first" : "Shipping"}</span>
+      </div>
+      ${guidanceBanner}
       ${hasIncomplete
-        ? `<div class="mt-3">
-          <button id="founderLaunchAppBtn" ${loading?.founderLaunchAppBtn ? "disabled" : ""} class="rounded-md bg-emerald-700 text-white px-3 py-2 text-sm ${loading?.founderLaunchAppBtn ? "opacity-60 cursor-not-allowed" : ""}">${loading?.founderLaunchAppBtn ? "Launching..." : "Launch my app"}</button>
+        ? `<div class="mt-4">
+          <button id="founderLaunchAppBtn" ${loading?.founderLaunchAppBtn ? "disabled" : ""} class="rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold shadow-medium hover:bg-emerald-800 hover:-translate-y-0.5 transition ${loading?.founderLaunchAppBtn ? "opacity-60 cursor-not-allowed" : ""}">${loading?.founderLaunchAppBtn ? nextAction.loadingLabel : nextAction.buttonLabel}</button>
         </div>`
         : ""}
       ${launchProgress
-        ? `<p class="mt-2 text-sm text-slate-700">${escapeHtml(launchProgress)}</p>`
+        ? `<p class="mt-3 text-sm text-slate-700">${escapeHtml(launchProgress)}</p>`
         : ""}
-      <ul class="mt-3 space-y-1">${rows}</ul>
+      <ul class="mt-4 space-y-1.5">${rows}</ul>
       ${allDone ? '<p class="mt-3 text-sm font-medium text-emerald-700">Your app is live 🚀</p>' : ""}
     </section>
   `;
 }
 
-function getPrimaryNextStep(launchState) {
-  const nextAction = getNextRecommendedAction(launchState);
-
-  if (nextAction === "connect_database") {
-    return {
-      title: "Next step",
-      actionLabel: "Connect database",
-      description: "This links your app to its primary database.",
-      instruction: "add env DATABASE_URL",
-      requiresConfirm: false,
-      buttonLabel: "Run",
-    };
-  }
-
-  if (nextAction === "deploy_backend_functions") {
-    return {
-      title: "Next step",
-      actionLabel: "Deploy backend functions",
-      description: "This enables your backend API and server logic.",
-      instruction: "deploy supabase function generate",
-      requiresConfirm: false,
-      buttonLabel: "Run",
-    };
-  }
-
-  if (nextAction === "prepare_preview") {
-    return {
-      title: "Next step",
-      actionLabel: "Prepare preview",
-      description: "This creates a shareable preview for testing.",
-      instruction: "deploy preview",
-      requiresConfirm: false,
-      buttonLabel: "Run",
-    };
-  }
-
-  if (nextAction === "make_app_live") {
-    return {
-      title: "Next step",
-      actionLabel: "Make app live",
-      description: "This publishes your app for real users.",
-      instruction: "deploy production",
-      requiresConfirm: true,
-      buttonLabel: "Run",
-    };
-  }
-
-  if (nextAction === "app_live") {
-    return {
-      title: "Your app is live 🚀",
-      actionLabel: "View logs",
-      description: "All launch steps are complete.",
-      instruction: "show logs",
-      requiresConfirm: false,
-      buttonLabel: "View logs",
-    };
-  }
-
-  return null;
-}
-
-function renderNextStepCard(nextStep, loading) {
-  if (!nextStep) {
-    return "";
-  }
-  const busy = Boolean(loading?.nextStepRunBtn);
+function renderProjectLiveInfo(status, launchState, doctorReport) {
+  const appLive = isProjectLive(launchState);
+  const dbConnected = Boolean(launchState?.databaseConnected);
+  const environment = getEnvironmentStatusFromDoctor(doctorReport);
+  const statusPill = (label, value, tone) => `
+    <div class="rounded-2xl border p-3.5 shadow-sm ${tone}">
+      <div class="text-xs tracking-wide text-slate-500">${label}</div>
+      <div class="mt-1 text-base font-semibold">${escapeHtml(value)}</div>
+      <div class="mt-1 text-xs text-slate-500">${label === "App" ? "Shipping status" : label === "Database" ? "Core data connection" : "Readiness check"}</div>
+    </div>
+  `;
+  const appTone = appLive ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-slate-50 text-slate-800";
+  const dbTone = dbConnected ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900";
+  const envTone = environment.severity === "ready"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+    : environment.severity === "blocked"
+      ? "border-rose-200 bg-rose-50 text-rose-900"
+      : environment.severity === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : "border-slate-200 bg-slate-50 text-slate-800";
   return `
-    <section class="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
-      <h2 class="text-lg font-semibold">${escapeHtml(nextStep.title)}</h2>
-      <p class="mt-2 text-sm font-medium text-slate-800">${escapeHtml(nextStep.actionLabel)}</p>
-      <p class="mt-1 text-sm text-slate-600">${escapeHtml(nextStep.description)}</p>
-      <div class="mt-3">
-        <button id="nextStepRunBtn" ${busy ? "disabled" : ""} class="rounded-md bg-slate-900 text-white px-3 py-2 text-sm ${busy ? "opacity-60 cursor-not-allowed" : ""}">${busy ? "Running..." : escapeHtml(nextStep.buttonLabel || "Run")}</button>
+    <section class="mt-8 rounded-3xl bg-white/85 p-6 shadow-soft border border-slate-200/65">
+      <h2 class="text-xl font-semibold">Project confidence</h2>
+      <p class="text-sm text-slate-600 mt-1">A calm snapshot of your launch readiness.</p>
+      <div class="mt-4 grid gap-3 md:grid-cols-3 text-sm">
+        ${statusPill("App", appLive ? "Live" : "In progress", appTone)}
+        ${statusPill("Database", dbConnected ? "Connected" : "Needs setup", dbTone)}
+        ${statusPill("Environment", environment.label, envTone)}
       </div>
     </section>
   `;
 }
 
-function renderProjectLiveInfo(status, launchState) {
-  const appLive = isProjectLive(launchState);
-  const dbConnected = Boolean(launchState?.databaseConnected);
-  const envReady = (Array.isArray(status?.env?.knownKeys) ? status.env.knownKeys.length : 0) >= 2;
-  const subtitle = appLive ? "Use AI Chat above to run tasks." : "Project setup incomplete";
+function toStackLabel(kind, value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) {
+    return "Not detected";
+  }
+  if (kind === "framework") {
+    if (raw === "next") return "Next.js";
+    if (raw === "react") return "React";
+    if (raw === "vite") return "Vite";
+  }
+  if (kind === "deploy") {
+    if (raw === "vercel") return "Vercel";
+    if (raw === "netlify") return "Netlify";
+  }
+  if (kind === "database") {
+    if (raw === "supabase") return "Supabase";
+  }
+  if (kind === "backend") {
+    if (raw === "supabase-functions") return "Supabase functions";
+  }
+  return "Not detected";
+}
+
+function renderDetectedStack(status) {
+  const stack = status?.stack || {};
   return `
-    <section class="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
-      <h2 class="text-xl font-semibold">${appLive ? "Your project is live" : "Project setup incomplete"}</h2>
-      <p class="text-sm text-slate-600 mt-1">${subtitle}</p>
-      <div class="mt-4 grid gap-2 md:grid-cols-3 text-sm">
-        <div class="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2"><span class="font-medium">App:</span> ${appLive ? "Live" : "Not live"}</div>
-        <div class="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2"><span class="font-medium">Database:</span> ${dbConnected ? "Connected" : "Not connected"}</div>
-        <div class="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2"><span class="font-medium">Environment:</span> ${envReady ? "Ready" : "Needs setup"}</div>
+    <section class="rounded-2xl bg-slate-50/60 p-5 shadow-sm border border-slate-200/70">
+      <h2 class="text-lg font-semibold">Technical setup</h2>
+      <p class="text-xs text-slate-500 mt-1">Technical context used for guided operations.</p>
+      <div class="mt-4 space-y-2 text-sm">
+        <div class="flex justify-between border-b border-slate-100 pb-1"><span class="font-medium">Framework</span><span>${escapeHtml(toStackLabel("framework", stack.framework))}</span></div>
+        <div class="flex justify-between border-b border-slate-100 pb-1"><span class="font-medium">Deploy</span><span>${escapeHtml(toStackLabel("deploy", stack.deploy))}</span></div>
+        <div class="flex justify-between border-b border-slate-100 pb-1"><span class="font-medium">Database</span><span>${escapeHtml(toStackLabel("database", stack.database))}</span></div>
+        <div class="flex justify-between"><span class="font-medium">Backend</span><span>${escapeHtml(toStackLabel("backend", stack.backend))}</span></div>
       </div>
+    </section>
+  `;
+}
+
+function renderEnvironmentSignal(doctorReport) {
+  const report = doctorReport && typeof doctorReport === "object" ? doctorReport : null;
+  if (!report) {
+    return "";
+  }
+
+  const environment = getEnvironmentStatusFromDoctor(report);
+  if (environment.severity === "ready" || environment.severity === "checking") {
+    return "";
+  }
+
+  const issues = Array.isArray(report.issues) ? report.issues : [];
+  const topIssues = issues.slice(0, 3);
+  const isBlocked = environment.severity === "blocked";
+  const wrapperClass = isBlocked
+    ? "mt-4 rounded-xl border border-rose-300 bg-rose-50 p-4 shadow-sm"
+    : "mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-sm";
+  const titleClass = isBlocked ? "text-rose-900" : "text-amber-900";
+  const bodyClass = isBlocked ? "text-rose-800" : "text-amber-800";
+  const badgeClass = isBlocked
+    ? "rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-900"
+    : "rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900";
+  const badgeText = isBlocked ? "Blocked" : "Warning";
+  const issueRows = topIssues.length > 0
+    ? topIssues.map((issue) => `<li>• ${escapeHtml(String(issue?.message || ""))}</li>`).join("")
+    : "<li>• Review Doctor details for setup issues.</li>";
+
+  return `
+    <section class="${wrapperClass}">
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="text-base font-semibold ${titleClass}">Environment needs attention</h2>
+        <span class="${badgeClass}">${badgeText}</span>
+      </div>
+      <ul class="mt-2 space-y-1 text-sm ${bodyClass}">${issueRows}</ul>
     </section>
   `;
 }
 
 function operationLabel(type) {
-  if (type === "deploy_preview") return "Prepare preview";
-  if (type === "deploy_production") return "Make app live";
-  if (type === "add_env") return "Add environment variable";
-  if (type === "deploy_supabase_function") return "Deploy backend functions";
-  if (type === "repair_deployment") return "Fix deployment";
-  if (type === "view_logs") return "Show logs";
+  if (type === "deploy_preview") return "Prepared a test version";
+  if (type === "deploy_production") return "Published your app";
+  if (type === "add_env") return "Connected your app";
+  if (type === "deploy_supabase_function") return "Connected what was missing";
+  if (type === "repair_deployment") return "Tried a guided fix";
+  if (type === "view_logs") return "Show details";
   return String(type || "Operation");
 }
 
@@ -339,11 +427,11 @@ function operationMessage(op) {
   const type = String(op?.type || "");
   if (type === "add_env") {
     const key = String(op?.payload?.key || "ENV_KEY");
-    return `Add env ${key}`;
+    return `Connected your app (${key})`;
   }
   if (type === "deploy_supabase_function") {
     const fn = String(op?.payload?.functionName || op?.payload?.name || "generate");
-    return `Deploy Supabase function ${fn}`;
+    return `Connected what was missing (${fn})`;
   }
   return operationLabel(type);
 }
@@ -362,13 +450,25 @@ function formatOperationTime(op) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function renderActivityList(operations) {
+function renderActivityList(operations, doctorReport) {
   const recent = Array.isArray(operations) ? [...operations].reverse().slice(0, 5) : [];
   if (recent.length === 0) {
+    const environment = getEnvironmentStatusFromDoctor(doctorReport);
+    const environmentLine = environment.severity === "ready"
+      ? "✔ Environment ready"
+      : environment.severity === "warning"
+        ? "○ Environment needs attention"
+        : environment.severity === "blocked"
+          ? "○ Environment blocked"
+          : "○ Checking environment";
     return `
-      <section class="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
+      <section class="mt-8 rounded-xl bg-white p-5 shadow-sm border border-slate-200">
         <h2 class="text-lg font-semibold">Activity</h2>
-        <p class="mt-2 text-sm text-slate-600">No operations yet. Actions you run will appear here.</p>
+        <ul class="mt-2 space-y-1 text-sm text-slate-600">
+          <li>✔ Project loaded</li>
+          <li>${escapeHtml(environmentLine)}</li>
+          <li>○ Waiting for next command</li>
+        </ul>
       </section>
     `;
   }
@@ -376,25 +476,79 @@ function renderActivityList(operations) {
   const rows = recent
     .map((op) => {
       const status = normalizeOperationStatus(op?.status);
+      const marker = status === "error" ? "✖" : status === "running" ? "●" : "✔";
       const details = status === "error" && op?.output
         ? `<div class="text-xs text-rose-700 mt-1">${escapeHtml(String(op.output).split(/\r?\n/)[0] || "Operation failed.")}</div>`
         : "";
       return `<li class="py-1 text-sm text-slate-700">
-        <div>${escapeHtml(operationMessage(op))} — ${escapeHtml(status)} — ${escapeHtml(formatOperationTime(op))}</div>
+        <div>${marker} ${escapeHtml(operationMessage(op))}</div>
         ${details}
       </li>`;
     })
     .join("");
 
   return `
-    <section class="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
+    <section class="mt-8 rounded-xl bg-white p-5 shadow-sm border border-slate-200">
       <h2 class="text-lg font-semibold">Activity</h2>
       <ul class="mt-2">${rows}</ul>
     </section>
   `;
 }
 
-function renderAiChatExecutionPlanSection({ loading, text, steps, guidance, prodConfirmChecked }) {
+function getDoctorSuggestionShortcut(doctorReport) {
+  const environment = getEnvironmentStatusFromDoctor(doctorReport);
+  if (environment.severity === "blocked") {
+    return {
+      kind: "doctor_shortcut",
+      label: "Fix environment",
+      reason: "Environment is blocked. Review Doctor fixes first.",
+    };
+  }
+  if (environment.severity === "warning") {
+    return {
+      kind: "doctor_shortcut",
+      label: "Open Doctor",
+      reason: "Environment needs attention before shipping.",
+    };
+  }
+  return null;
+}
+
+function getDisplaySuggestions(baseSuggestions, doctorReport) {
+  const items = [];
+  const normalized = Array.isArray(baseSuggestions) ? baseSuggestions : [];
+  for (const item of normalized) {
+    const label = String(item?.label || item?.command || item?.action || "").trim();
+    const command = String(item?.command || item?.action || "").trim();
+    if (!label || !command) {
+      continue;
+    }
+    items.push({
+      kind: "command",
+      label,
+      command,
+      reason: String(item?.reason || "").trim(),
+    });
+  }
+
+  const seen = new Set();
+  const deduped = [];
+  for (const item of items) {
+    const key = `${String(item.label)}::${String(item.command || "")}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(item);
+  }
+  const shortcut = getDoctorSuggestionShortcut(doctorReport);
+  if (shortcut) {
+    return [shortcut, ...deduped];
+  }
+  return deduped;
+}
+
+function renderAiChatExecutionPlanSection({ loading, text, steps, guidance, prodConfirmChecked, suggestions, doctorReport }) {
   const analyzeBusy = Boolean(loading.aiAnalyzeBtn);
   const runBusy = Boolean(loading.aiRunPlanBtn);
   const autoRunBusy = Boolean(loading.aiAutoRunSafeBtn);
@@ -415,15 +569,15 @@ function renderAiChatExecutionPlanSection({ loading, text, steps, guidance, prod
     return "text-slate-500";
   };
   const statusBackgroundClass = (status) => {
-    if (status === "running") return "bg-blue-50 border-blue-200";
+    if (status === "running") return "bg-sky-50 border-sky-200";
     if (status === "success") return "bg-emerald-50 border-emerald-200";
     if (status === "failed") return "bg-rose-50 border-rose-200";
     if (status === "skipped") return "bg-slate-50 border-slate-200";
-    return "bg-white border-slate-200";
+    return "bg-white/90 border-slate-200";
   };
   const actionRows = Array.isArray(steps) && steps.length > 0
     ? steps.map((step, index) =>
-      `<li class="rounded-md border p-3 ${statusBackgroundClass(step?.status)}">
+      `<li class="rounded-xl border p-3 ${statusBackgroundClass(step?.status)}">
         <div class="text-[11px] uppercase tracking-wide text-slate-500">Step ${index + 1}</div>
         <div class="mt-1 text-sm font-medium text-slate-800">${escapeHtml(step?.label || `Step ${index + 1}`)}</div>
         <div class="mt-1 text-[11px] uppercase tracking-wide ${statusClass(step?.status)}">Status: ${escapeHtml(step?.status || "pending")}</div>
@@ -432,12 +586,31 @@ function renderAiChatExecutionPlanSection({ loading, text, steps, guidance, prod
           : ""}
         ${step?.status === "failed"
           ? `<div class="mt-2">
-            <button id="retryPlanStepBtn-${index}" data-retry-step-index="${index}" ${loading?.[`retryPlanStepBtn-${index}`] ? "disabled" : ""} class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 ${loading?.[`retryPlanStepBtn-${index}`] ? "opacity-60 cursor-not-allowed" : ""}">${loading?.[`retryPlanStepBtn-${index}`] ? "Retrying..." : "Retry step"}</button>
+            <button id="retryPlanStepBtn-${index}" data-retry-step-index="${index}" ${loading?.[`retryPlanStepBtn-${index}`] ? "disabled" : ""} class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 ${loading?.[`retryPlanStepBtn-${index}`] ? "opacity-60 cursor-not-allowed" : ""}">${loading?.[`retryPlanStepBtn-${index}`] ? "Retrying..." : "Retry step"}</button>
           </div>`
           : ""}
       </li>`,
     ).join("")
     : "";
+  const suggestionItems = getDisplaySuggestions(suggestions, doctorReport);
+  const suggestionRows = suggestionItems.length > 0
+    ? suggestionItems.map((suggestion, index) => {
+      const label = String(suggestion?.label || `Suggestion ${index + 1}`);
+      const command = String(suggestion?.command || "").trim();
+      const reason = String(suggestion?.reason || "").trim();
+      const kind = String(suggestion?.kind || "command");
+      return `<button
+        type="button"
+        id="commandSuggestionBtn-${index}"
+        class="w-full rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2.5 text-left hover:bg-slate-100 transition"
+        data-command-suggestion="${escapeHtml(command)}"
+        data-suggestion-kind="${escapeHtml(kind)}"
+      >
+        <div class="text-sm font-medium text-slate-800">${escapeHtml(label)}</div>
+        ${reason ? `<div class="mt-0.5 text-xs text-slate-600">${escapeHtml(reason)}</div>` : ""}
+      </button>`;
+    }).join("")
+    : `<div class="text-xs text-slate-500">No suggestions available right now.</div>`;
   const intentRows = Array.isArray(steps) && steps.length > 0
     ? steps.map((step) => `<li>✓ ${escapeHtml(friendlyIntent(step?.action || {}))}</li>`).join("")
     : "<li>Your app is ready. Choose what you want to do next.</li>";
@@ -450,40 +623,45 @@ function renderAiChatExecutionPlanSection({ loading, text, steps, guidance, prod
         : "bg-slate-100 border-slate-300 text-slate-800";
 
   return `
-    <section class="rounded-xl bg-white p-5 shadow-sm border border-slate-200">
-      <h2 class="text-lg font-semibold">Operator Command</h2>
-      <p class="text-sm text-slate-600 mt-1">Describe what you want to do with your app.</p>
-      <div class="mt-2 flex flex-wrap gap-2">
-        <button id="operatorQuickLaunchBtn" data-operator-command="launch SaaS" ${quickBusy ? "disabled" : ""} class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Launch SaaS</button>
-        <button id="operatorQuickBackendBtn" data-operator-command="deploy backend" ${quickBusy ? "disabled" : ""} class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Deploy backend</button>
-        <button id="operatorQuickPreviewBtn" data-operator-command="deploy preview" ${quickBusy ? "disabled" : ""} class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Deploy preview</button>
-        <button id="operatorQuickLiveBtn" data-operator-command="make app live" ${quickBusy ? "disabled" : ""} class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Make app live</button>
+    <section class="rounded-3xl bg-gradient-to-b from-sky-50/75 to-white/90 p-6 shadow-medium border border-sky-100/70 transition-all duration-200">
+      <h2 class="text-2xl font-semibold">Welcome</h2>
+      <p class="text-sm text-slate-600 mt-1">What do you want to make?</p>
+      <label class="text-xs font-medium mt-4 block text-slate-600">Try a goal</label>
+      <div class="mt-2 flex flex-wrap gap-2.5">
+        <button id="operatorQuickLaunchBtn" data-operator-command="launch SaaS" ${quickBusy ? "disabled" : ""} class="rounded-full border border-slate-200/80 bg-white/80 px-3.5 py-1.5 text-xs text-slate-700 hover:bg-white transition ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Start my app</button>
+        <button id="operatorQuickBackendBtn" data-operator-command="deploy backend" ${quickBusy ? "disabled" : ""} class="rounded-full border border-slate-200/80 bg-white/80 px-3.5 py-1.5 text-xs text-slate-700 hover:bg-white transition ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Connect what’s missing</button>
+        <button id="operatorQuickPreviewBtn" data-operator-command="deploy preview" ${quickBusy ? "disabled" : ""} class="rounded-full border border-slate-200/80 bg-white/80 px-3.5 py-1.5 text-xs text-slate-700 hover:bg-white transition ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Make a test version</button>
+        <button id="operatorQuickLiveBtn" data-operator-command="make app live" ${quickBusy ? "disabled" : ""} class="rounded-full border border-slate-200/80 bg-white/80 px-3.5 py-1.5 text-xs text-slate-700 hover:bg-white transition ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Publish for people</button>
       </div>
-      <label class="text-sm font-medium mt-3 block">Command</label>
-      <textarea id="ai-analyze-input" class="mt-2 w-full rounded-md border border-slate-300 p-3 h-28 text-sm" placeholder="Paste AI instructions here...">${escapeHtml(text || "")}</textarea>
-      <p class="mt-1 text-xs text-slate-500">Examples: launch SaaS, deploy preview, connect database, deploy backend</p>
-      <div class="mt-3">
-        <button id="aiAnalyzeBtn" ${analyzeBusy ? "disabled" : ""} class="rounded-md bg-slate-700 text-white px-3 py-2 text-sm ${analyzeBusy ? "opacity-60 cursor-not-allowed" : ""}">${analyzeBusy ? "Analyzing..." : "Analyze"}</button>
-        <button id="aiRunPlanBtn" ${runDisabled ? "disabled" : ""} class="ml-2 rounded-md bg-emerald-700 text-white px-3 py-2 text-sm ${runDisabled ? "opacity-60 cursor-not-allowed" : ""}">${runBusy ? "Running..." : "Run Plan"}</button>
+      <input id="ai-analyze-input" class="mt-3 rounded-2xl border border-slate-200/80 bg-white/85 text-sm shadow-inner focus:bg-white focus:border-slate-300" style="font-size:16px;padding:12px;width:420px;" placeholder="Make a recipe app for my mom" value="${escapeHtml(text || "")}" />
+      <div class="mt-2 text-xs text-slate-500">You don’t need technical words. Describe your goal.</div>
+      <div class="mt-1 text-xs text-slate-500">deplo.app handles safe steps and asks before sensitive ones.</div>
+      <div class="mt-4">
+        <div class="text-xs font-medium text-slate-600">Helpful starters</div>
+        <div class="mt-2 space-y-2">${suggestionRows}</div>
+      </div>
+      <div class="mt-4">
+        <button id="aiAnalyzeBtn" ${analyzeBusy ? "disabled" : ""} class="rounded-full bg-slate-700 text-white px-4 py-2.5 text-sm font-medium shadow-soft hover:bg-slate-800 hover:-translate-y-0.5 transition ${analyzeBusy ? "opacity-60 cursor-not-allowed" : ""}">${analyzeBusy ? "Checking..." : "Show steps"}</button>
+        <button id="aiRunPlanBtn" ${runDisabled ? "disabled" : ""} class="ml-2 rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold shadow-medium hover:bg-emerald-800 hover:-translate-y-0.5 transition ${runDisabled ? "opacity-60 cursor-not-allowed" : ""}">${runBusy ? "Starting..." : "Start guided steps"}</button>
       </div>
       ${hasProductionDeploy
         ? `<div class="mt-3 rounded-lg border border-amber-300 bg-amber-100 p-3 text-amber-900">
-          <div class="text-sm font-semibold">Production deploy detected. Please confirm before running.</div>
+          <div class="text-sm font-semibold">Publishing for people affects your live app. Please confirm.</div>
           <label class="mt-2 flex items-center gap-2 text-sm">
             <input id="prodConfirmCheckbox" type="checkbox" ${prodConfirmChecked ? "checked" : ""} />
-            <span>I confirm production deployment</span>
+            <span>I confirm publishing</span>
           </label>
         </div>`
         : ""}
       ${safeOnly
-        ? `<div class="mt-3 rounded-lg border border-emerald-300 bg-emerald-100 p-3 text-emerald-900">
+        ? `<div class="mt-3 rounded-xl border border-emerald-300 bg-emerald-100 p-3 text-emerald-900">
           <div class="text-sm font-semibold">Safe to run automatically</div>
-          <button id="aiAutoRunSafeBtn" ${autoRunBusy ? "disabled" : ""} class="mt-2 rounded-md bg-emerald-700 text-white px-3 py-2 text-sm ${autoRunBusy ? "opacity-60 cursor-not-allowed" : ""}">${autoRunBusy ? "Running..." : "Auto-run safe actions"}</button>
+          <button id="aiAutoRunSafeBtn" ${autoRunBusy ? "disabled" : ""} class="mt-2 rounded-full bg-emerald-700 text-white px-3.5 py-2 text-sm font-medium shadow-sm ${autoRunBusy ? "opacity-60 cursor-not-allowed" : ""}">${autoRunBusy ? "Running..." : "Auto-run safe actions"}</button>
         </div>`
         : ""}
       ${hasActions
-        ? `<div class="mt-3">
-          <div class="text-sm font-semibold text-slate-800">What this will do</div>
+        ? `<div class="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3">
+          <div class="text-sm font-semibold text-slate-800">What deplo.app will do</div>
           <ul class="mt-1 text-sm text-slate-700 space-y-1">${intentRows}</ul>
         </div>
         <div class="mt-3">
@@ -495,7 +673,7 @@ function renderAiChatExecutionPlanSection({ loading, text, steps, guidance, prod
         : '<p class="mt-3 text-sm text-slate-600">Paste instructions from AI to run tasks automatically.</p>'}
       ${hasActions
         ? `<div class="mt-3">
-          <div class="text-sm font-semibold text-slate-800">Execution Plan</div>
+          <div class="text-sm font-semibold text-slate-800">What will happen next</div>
           <ol class="mt-2 space-y-2">${actionRows}</ol>
         </div>`
         : ""}
@@ -517,10 +695,10 @@ function computeExecutionPlanGuidance(text, actions, status) {
   if ((hasAddEnvPhrase && !hasEnvKey) || (hasSupabasePhrase && !hasSupabaseName)) {
     const details = [];
     if (hasAddEnvPhrase && !hasEnvKey) {
-      details.push("Add an env key, for example: add env DATABASE_URL");
+      details.push("Add the missing connection name.");
     }
     if (hasSupabasePhrase && !hasSupabaseName) {
-      details.push("Add a function name, for example: deploy supabase function generate");
+      details.push("Add the missing feature name.");
     }
     return {
       label: "Missing information",
@@ -533,14 +711,14 @@ function computeExecutionPlanGuidance(text, actions, status) {
     return {
       label: "Ready to run",
       tone: "ok",
-      message: `Found ${detectedActions.length} action${detectedActions.length === 1 ? "" : "s"} ready for Run Plan.`,
+      message: `Found ${detectedActions.length} step${detectedActions.length === 1 ? "" : "s"} ready to start.`,
     };
   }
 
   return {
-    label: "No actions detected",
+    label: "No steps detected",
     tone: "neutral",
-    message: "Paste instructions with clear commands like deploy preview or add env DATABASE_URL",
+    message: "Describe your idea in one sentence, for example: Make a recipe app for my mom.",
   };
 }
 
@@ -557,6 +735,12 @@ function App() {
       connected: false,
       lastDeployUrl: null,
       lastDeployAt: null,
+    },
+    stack: {
+      framework: null,
+      deploy: null,
+      database: null,
+      backend: null,
     },
     supabase: {
       connected: false,
@@ -586,6 +770,7 @@ function App() {
     database_migrations: false,
   });
   const [suggestions, setSuggestions] = useState([]);
+  const [doctorReport, setDoctorReport] = useState(null);
   const [operations, setOperations] = useState([]);
   const [chatText, setChatText] = useState("");
   const [chatActions, setChatActions] = useState([]);
@@ -607,6 +792,7 @@ function App() {
   const [launchStepStates, setLaunchStepStates] = useState({});
   const [launchStateOverrides, setLaunchStateOverrides] = useState({});
   const [activityLog, setActivityLog] = useState([]);
+  const [expandedTimelineIds, setExpandedTimelineIds] = useState(new Set());
   const operationStatusRef = useRef({});
   const launchState = mergeLaunchState(getLaunchState(status), launchStateOverrides);
 
@@ -625,7 +811,11 @@ function App() {
     if (!response.ok) {
       throw new Error(data.message || "Failed to load suggestions");
     }
-    setSuggestions(Array.isArray(data) ? data : []);
+    if (Array.isArray(data)) {
+      setSuggestions(data);
+      return;
+    }
+    setSuggestions(Array.isArray(data?.suggestions) ? data.suggestions : []);
   }
 
   async function loadCapabilities() {
@@ -635,6 +825,15 @@ function App() {
       throw new Error(data.message || "Failed to load capabilities");
     }
     setCapabilities(data || {});
+  }
+
+  async function loadDoctorReport() {
+    const response = await fetch("/api/doctor");
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to load doctor report");
+    }
+    setDoctorReport(data || null);
   }
 
   async function loadOperations() {
@@ -686,9 +885,9 @@ function App() {
   }
 
   useEffect(() => {
-    Promise.all([loadStatus(), loadSuggestions(), loadCapabilities()]).catch((error) => setOutput(error.message));
+    Promise.all([loadStatus(), loadSuggestions(), loadCapabilities(), loadDoctorReport()]).catch((error) => setOutput(error.message));
     const timer = setInterval(() => {
-      Promise.all([loadStatus(), loadSuggestions(), loadCapabilities()]).catch(() => {
+      Promise.all([loadStatus(), loadSuggestions(), loadCapabilities(), loadDoctorReport()]).catch(() => {
         // keep previous status when polling fails
       });
     }, 5000);
@@ -723,7 +922,7 @@ function App() {
     let blurTimer = null;
     const onFocusIn = (event) => {
       const target = event.target;
-      if (target instanceof HTMLElement && target.id === "command-center-input") {
+      if (target instanceof HTMLElement && target.id === "ai-analyze-input") {
         if (blurTimer) {
           clearTimeout(blurTimer);
           blurTimer = null;
@@ -734,7 +933,7 @@ function App() {
     const onFocusOut = () => {
       blurTimer = setTimeout(() => {
         const active = document.activeElement;
-        if (!(active instanceof HTMLElement) || active.id !== "command-center-input") {
+        if (!(active instanceof HTMLElement) || active.id !== "ai-analyze-input") {
           setCommandFocused(false);
         }
       }, 80);
@@ -751,20 +950,31 @@ function App() {
     };
   }, []);
 
-  function nowTime() {
-    return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
+function nowTime() {
+  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
-  function markAction(label, outcome, details) {
-    const time = nowTime();
-    setResultBanner({
-      type: outcome,
-      message: `${label} ${outcome === "success" ? "completed" : "failed"}`,
-      time,
-    });
-    if (details) {
-      setOutput(details);
-    }
+function firstNonEmptyLine(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean) || "";
+}
+
+function markAction(label, outcome, details) {
+  const time = nowTime();
+  const defaultMessage = `${label} ${outcome === "success" ? "completed" : "failed"}`;
+  const fixMessage = outcome === "success" && label === "Fix environment"
+    ? firstNonEmptyLine(details)
+    : "";
+  setResultBanner({
+    type: outcome,
+    message: fixMessage || defaultMessage,
+    time,
+  });
+  if (details) {
+    setOutput(details);
+  }
   }
 
   async function runAction(buttonId, label, work) {
@@ -867,7 +1077,7 @@ function App() {
     return entry.id;
   }
 
-  function updateActivityEntry(id, status, message, error) {
+  function updateActivityEntry(id, status, message, error, jobIds) {
     setActivityLog((prev) =>
       prev.map((entry) => {
         if (entry.id !== id) {
@@ -879,6 +1089,7 @@ function App() {
           message,
           timestamp: new Date().toISOString(),
           ...(error ? { error } : {}),
+          ...(jobIds ? { jobIds } : {}),
         };
       }),
     );
@@ -920,24 +1131,30 @@ function App() {
     });
   }
 
+  async function dispatchCoreAction(action, payload = {}) {
+    return postJson("/api/actions/dispatch", { action, payload });
+  }
+
   async function queueAction(action) {
     const type = String(action?.type || "");
     if (type === "prepare_preview") {
-      return postJson("/api/deploy/preview");
+      return dispatchCoreAction("deploy_preview");
     }
     if (type === "make_app_live") {
-      return postJson("/api/deploy/prod");
+      if (launchState?.deployToProduction !== true) {
+        return {
+          skipped: true,
+          message: "Production deploy not enabled.",
+        };
+      }
+      return dispatchCoreAction("make_app_live", { confirm: true });
     }
     if (type === "deploy_backend_functions") {
       const functionName = String(action?.name || "generate").trim() || "generate";
       const projectRef = String(status?.supabase?.projectRef || "").trim();
-      if (projectRef) {
-        return postJson("/api/do/execute", {
-          instruction: `deploy supabase function ${functionName} --project-ref ${projectRef}`,
-        });
-      }
-      return postJson("/api/do/execute", {
-        instruction: `deploy supabase function ${functionName}`,
+      return dispatchCoreAction("deploy_backend", {
+        functionName,
+        projectRef,
       });
     }
     if (type === "connect_database") {
@@ -946,8 +1163,7 @@ function App() {
       if (!value) {
         throw new Error("Canceled: DATABASE_URL is required.");
       }
-      return postJson("/api/env/add", {
-        key: "DATABASE_URL",
+      return dispatchCoreAction("connect_database", {
         value,
         target: "preview",
       });
@@ -997,6 +1213,11 @@ function App() {
 
     try {
       const queued = await queueAction(action);
+      if (queued?.skipped) {
+        const skippedMessage = String(queued?.message || "Step skipped.");
+        updateActivityEntry(entryId, "skipped", skippedMessage);
+        return { jobIds: [], operation, skipped: true };
+      }
       const jobIds = Array.isArray(queued?.jobIds)
         ? queued.jobIds
         : queued?.jobId
@@ -1004,6 +1225,7 @@ function App() {
           : [];
 
       if (jobIds.length > 0) {
+        updateActivityEntry(entryId, "running", `${label} running`, undefined, jobIds);
         const result = await waitForQueuedJobs(jobIds);
         if (!result.ok) {
           throw new Error(result.message || `${label} failed`);
@@ -1030,6 +1252,17 @@ function App() {
 
     const data = await postJson("/api/ai/detect", { text });
     const actions = Array.isArray(data.actions) ? data.actions : [];
+    const stack = data?.stack && typeof data.stack === "object" ? data.stack : null;
+    if (stack) {
+      const stackLines = [
+        "Detected stack:",
+        `framework: ${String(stack.framework ?? "null")}`,
+        `deploy: ${String(stack.deploy ?? "null")}`,
+        `database: ${String(stack.database ?? "null")}`,
+        `backend: ${String(stack.backend ?? "null")}`,
+      ];
+      createActivityEntry("stack_detect", "success", stackLines.join("\n"));
+    }
     setExecutionPlan({
       rawInput: text,
       actions,
@@ -1102,11 +1335,13 @@ function App() {
         const result = await runOperationHandler(action);
         const jobIds = Array.isArray(result?.jobIds) ? result.jobIds : [];
         queuedJobIds.push(...jobIds);
-        markCompleted(result?.operation || operation);
-        if (shouldTrackPlan) {
-          setPlanStepStatus(i, "success", null);
+        if (!result?.skipped) {
+          markCompleted(result?.operation || operation);
         }
-        lines.push(`✓ ${label}`);
+        if (shouldTrackPlan) {
+          setPlanStepStatus(i, result?.skipped ? "skipped" : "success", null);
+        }
+        lines.push(result?.skipped ? `↷ skipped ${label}` : `✓ ${label}`);
         await loadOperations();
         await loadStatus();
         await loadSuggestions();
@@ -1140,15 +1375,75 @@ function App() {
         return;
       }
 
+      const openDoctorSection = () => {
+        const advanced = document.getElementById("advancedSection");
+        if (advanced instanceof HTMLDetailsElement) {
+          advanced.open = true;
+        }
+        const doctorEl = document.getElementById("doctor-section");
+        if (doctorEl instanceof HTMLElement) {
+          doctorEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      };
+
       try {
+        // Timeline log expand/collapse toggle
+        const timelineToggleId = target.dataset?.timelineToggle;
+        if (timelineToggleId) {
+          setExpandedTimelineIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(timelineToggleId)) {
+              next.delete(timelineToggleId);
+            } else {
+              next.add(timelineToggleId);
+            }
+            return next;
+          });
+          return;
+        }
+
         const suggestion = target.dataset?.commandSuggestion;
+        const suggestionKind = String(target.dataset?.suggestionKind || "");
+        if (suggestionKind === "doctor_shortcut") {
+          openDoctorSection();
+          return;
+        }
         if (suggestion) {
-          const inputEl = document.getElementById("command-center-input");
+          const inputEl = document.getElementById("ai-analyze-input");
           if (inputEl instanceof HTMLInputElement) {
             inputEl.value = suggestion;
+            inputEl.focus();
           }
+          setExecutionPlan((prev) => ({ ...prev, rawInput: suggestion }));
           setCommandText(suggestion);
           setCommandFocused(false);
+          return;
+        }
+
+        const copyText = String(target.dataset?.copyText || "");
+        if (copyText) {
+          await navigator.clipboard.writeText(copyText);
+          setOutput(`Copied command: ${copyText}`);
+          return;
+        }
+
+        const doctorActionId = String(target.dataset?.doctorActionId || "");
+        if (doctorActionId) {
+          await runAction(`doctor-fix-${doctorActionId}`, "Doctor fix", async () => {
+            const data = await postJson("/api/doctor/fix", { actionId: doctorActionId });
+            if (data?.report) {
+              setDoctorReport(data.report);
+            } else {
+              await loadDoctorReport();
+            }
+            await loadStatus();
+            return String(data?.message || "Fix completed");
+          });
+          return;
+        }
+
+        if (target.id === "openDoctorBtn") {
+          openDoctorSection();
           return;
         }
 
@@ -1186,7 +1481,7 @@ function App() {
         if (target.id === "aiAnalyzeBtn") {
           await runAction("aiAnalyzeBtn", "Analyze", async () => {
             const inputEl = document.getElementById("ai-analyze-input");
-            const text = inputEl instanceof HTMLTextAreaElement ? inputEl.value : "";
+            const text = inputEl instanceof HTMLInputElement || inputEl instanceof HTMLTextAreaElement ? inputEl.value : "";
             return analyzeOperatorInput(text);
           });
           return;
@@ -1225,7 +1520,64 @@ function App() {
         }
 
         if (target.id === "founderLaunchAppBtn") {
-          await runAction("founderLaunchAppBtn", "Launch my app", async () => {
+          const nextAction = getPrimaryNextActionState(doctorReport);
+          await runAction("founderLaunchAppBtn", nextAction.buttonLabel, async () => {
+            if (nextAction.mode === "setup_open") {
+              openDoctorSection();
+              setLaunchProgress("");
+              return `${nextAction.buttonLabel}: review Doctor checks first.`;
+            }
+            if (nextAction.mode === "setup_fix") {
+              const beforeReport = doctorReport && typeof doctorReport === "object" ? doctorReport : null;
+              const autofixActions = getDoctorAutofixActions(beforeReport);
+              if (autofixActions.length === 0) {
+                openDoctorSection();
+                setLaunchProgress("");
+                return [
+                  "No safe fix available",
+                  "Review Doctor actions",
+                ].join("\n");
+              }
+
+              const beforeIssues = Array.isArray(beforeReport?.issues) ? beforeReport.issues.length : 0;
+              setLaunchProgress("Applying safe environment fixes...");
+              let latestReport = beforeReport;
+              for (const action of autofixActions) {
+                const actionId = String(action?.id || "").trim();
+                if (!actionId) {
+                  continue;
+                }
+                const data = await postJson("/api/doctor/fix", { actionId });
+                if (data?.report && typeof data.report === "object") {
+                  latestReport = data.report;
+                  setDoctorReport(data.report);
+                }
+              }
+
+              await Promise.all([loadDoctorReport(), loadStatus(), loadSuggestions()]);
+              setLaunchProgress("");
+
+              const afterIssues = Array.isArray(latestReport?.issues) ? latestReport.issues.length : beforeIssues;
+              const fixedCount = Math.max(0, beforeIssues - afterIssues);
+              const manualRemaining = Array.isArray(latestReport?.actions)
+                ? latestReport.actions.filter((item) => String(item?.type || "") === "manual").length
+                : 0;
+              const finalOverall = String(latestReport?.overall || "").toLowerCase();
+              if (finalOverall === "ready" || (afterIssues === 0 && manualRemaining === 0)) {
+                return [
+                  "Environment fixed",
+                  "All setup issues resolved",
+                ].join("\n");
+              }
+              return [
+                `${Math.max(1, autofixActions.length)} safe fix applied`,
+                "Environment rechecked",
+                manualRemaining > 0
+                  ? "Manual action still needed"
+                  : `${fixedCount} issue fixed`,
+              ].join("\n");
+            }
+
             const steps = getLaunchChecklist(launchState);
             const pending = steps.filter((step) => !step.done);
             if (pending.length === 0) {
@@ -1272,34 +1624,6 @@ function App() {
           return;
         }
 
-        if (target.id === "nextStepRunBtn") {
-          await runAction("nextStepRunBtn", "Next step", async () => {
-            const nextStep = getPrimaryNextStep(launchState);
-            if (!nextStep) {
-              return "No next step right now.";
-            }
-            if (nextStep.requiresConfirm) {
-              const approved = window.confirm("This will trigger production deployment. Continue?");
-              if (!approved) {
-                return "Canceled by user.";
-              }
-            }
-            const action = nextStep.instruction === "add env DATABASE_URL"
-              ? { type: "connect_database" }
-              : nextStep.instruction === "deploy supabase function generate"
-                ? { type: "deploy_backend_functions" }
-                : nextStep.instruction === "deploy preview"
-                  ? { type: "prepare_preview" }
-                  : nextStep.instruction === "deploy production"
-                    ? { type: "make_app_live" }
-                    : { type: "show_logs" };
-            await executePlanActionsSequential([action], { silentProgress: false });
-            setLaunchProgress("");
-            return `${nextStep.actionLabel} complete.`;
-          });
-          return;
-        }
-
         const shortcutMap = {
           shortcutLiveBtn: "deploy production",
           shortcutPreviewBtn: "deploy preview",
@@ -1318,7 +1642,7 @@ function App() {
         if (target.id === "aiRunPlanBtn") {
           await runAction("aiRunPlanBtn", "Run plan", async () => {
             const inputEl = document.getElementById("ai-analyze-input");
-            const text = inputEl instanceof HTMLTextAreaElement ? inputEl.value.trim() : "";
+            const text = inputEl instanceof HTMLInputElement || inputEl instanceof HTMLTextAreaElement ? inputEl.value.trim() : "";
             if (!text) {
               return "Please paste AI chat text first.";
             }
@@ -1413,6 +1737,7 @@ function App() {
           const input = target;
           if (input instanceof HTMLInputElement) {
             setProdConfirmChecked(input.checked);
+            setLaunchStateOverrides((prev) => ({ ...prev, deployToProduction: input.checked }));
           }
           return;
         }
@@ -1464,7 +1789,7 @@ function App() {
               return "Please paste AI chat text first.";
             }
 
-            const result = await postJson("/api/ai/import", { text });
+            const result = await postJson("/api/ai/detect", { text });
             const parsed = Array.isArray(result.actions)
               ? result.actions.map((item) => formatExecutionAction(item))
               : [];
@@ -1474,10 +1799,8 @@ function App() {
               return "No runnable actions detected.";
             }
             setChatEmptyMessage("");
-            await loadOperations();
             return [
-              `Detected actions: ${result.actionsDetected}`,
-              `Jobs queued: ${result.jobsQueued}`,
+              `Detected actions: ${result.actionsDetected ?? parsed.length}`,
               parsed.join("\n"),
             ].join("\n");
           });
@@ -1560,7 +1883,7 @@ function App() {
 
         if (target.id === "previewDeployBtn") {
           await runAction("previewDeployBtn", "Preview deploy", async () => {
-            const data = await postJson("/api/deploy/preview");
+            const data = await dispatchCoreAction("deploy_preview");
             await loadStatus();
             await loadSuggestions();
             return formatActionResult(data, "Job queued");
@@ -1570,7 +1893,11 @@ function App() {
 
         if (target.id === "prodDeployBtn") {
           await runAction("prodDeployBtn", "Production deploy", async () => {
-            const data = await postJson("/api/deploy/prod");
+            const approved = window.confirm("This will trigger production deployment. Continue?");
+            if (!approved) {
+              return "Canceled by user.";
+            }
+            const data = await dispatchCoreAction("make_app_live", { confirm: true });
             await loadStatus();
             await loadSuggestions();
             return formatActionResult(data, "Job queued");
@@ -1604,7 +1931,7 @@ function App() {
 
         if (target.id === "quickDeployPreviewBtn") {
           await runAction("quickDeployPreviewBtn", "Deploy preview", async () => {
-            const data = await postJson("/api/do/execute", { instruction: "deploy preview" });
+            const data = await dispatchCoreAction("deploy_preview");
             await loadStatus();
             await loadSuggestions();
             return formatActionResult(data, "Job queued");
@@ -1614,7 +1941,11 @@ function App() {
 
         if (target.id === "quickDeployProdBtn") {
           await runAction("quickDeployProdBtn", "Deploy production", async () => {
-            const data = await postJson("/api/do/execute", { instruction: "deploy production" });
+            const approved = window.confirm("This will trigger production deployment. Continue?");
+            if (!approved) {
+              return "Canceled by user.";
+            }
+            const data = await dispatchCoreAction("make_app_live", { confirm: true });
             await loadStatus();
             await loadSuggestions();
             return formatActionResult(data, "Job queued");
@@ -1688,6 +2019,24 @@ function App() {
         const suggestionId = target.dataset?.suggestionId;
         const suggestionAction = target.dataset?.suggestionAction;
         if (suggestionId && suggestionAction) {
+          const normalized = String(suggestionAction).trim().toLowerCase();
+          if (
+            normalized === "deploy preview"
+            || normalized === "deploy production"
+            || normalized === "connect database"
+            || normalized.startsWith("add env database_url")
+            || normalized.startsWith("deploy backend")
+            || normalized.startsWith("deploy supabase function")
+          ) {
+            const inputEl = document.getElementById("ai-analyze-input");
+            if (inputEl instanceof HTMLInputElement) {
+              inputEl.value = suggestionAction;
+              inputEl.focus();
+            }
+            setExecutionPlan((prev) => ({ ...prev, rawInput: suggestionAction }));
+            setOutput(`Suggestion loaded: ${suggestionAction}`);
+            return;
+          }
           await runAction(`suggestion-${suggestionId}`, "Suggested action", async () => {
             const data = await postJson("/api/do/execute", { instruction: suggestionAction });
             await loadStatus();
@@ -1725,38 +2074,38 @@ function App() {
     const heroState = detectHeroState(status, operations);
     const errorSummary = extractErrorSummary(status);
     const guidance = computeExecutionPlanGuidance(executionPlan.rawInput, executionPlan.actions, status);
-    const nextStep = getPrimaryNextStep(launchState);
+    const timelineEntries = buildTimeline(activityLog, operations, executionPlan, prodConfirmChecked);
+    const timelineOutcome = computeOutcome(timelineEntries);
     return [
-      '<div class="max-w-6xl mx-auto p-4 space-y-4" id="appBody">',
-      '<h1 class="text-2xl font-bold">BowerBird</h1>',
-      '<p class="text-sm text-slate-600">AI builder operator console for command-first shipping.</p>',
-      renderFounderSetupProgress(launchState, loading, launchProgress, launchStepStates),
-      renderNextStepCard(nextStep, loading),
+      '<div class="max-w-6xl mx-auto p-4 space-y-6" id="appBody">',
+      '<style>#appBody section, #appBody details{transition:box-shadow .2s ease, transform .2s ease} #appBody section:hover{box-shadow:0 18px 34px rgba(15,23,42,.06)}</style>',
+      '<h1 class="text-2xl font-bold">deplo.app</h1>',
+      '<p class="text-sm text-slate-600">Guided shipping for founders building with AI. Safe fixes are automatic, production actions stay in your control.</p>',
       renderAiChatExecutionPlanSection({
         loading,
         text: executionPlan.rawInput,
         steps: executionPlan.steps,
         guidance,
         prodConfirmChecked,
+        suggestions,
+        doctorReport,
       }),
-      renderProjectLiveInfo(status, launchState),
-      renderActivityList(activityLog),
-      resultBanner
-        ? `<section class="rounded-xl p-3 shadow-sm ${resultBanner.type === "success" ? "bg-emerald-100 border border-emerald-300 text-emerald-900" : "bg-rose-100 border border-rose-300 text-rose-900"}">${escapeHtml(resultBanner.message)} (${escapeHtml(resultBanner.time)})</section>`
-        : "",
-      ProjectHealthSection({ status }),
-      '<details class="rounded-xl bg-white p-4 shadow-sm">',
-      '<summary class="cursor-pointer text-lg font-semibold">Advanced</summary>',
+      renderFounderSetupProgress(launchState, loading, launchProgress, launchStepStates, doctorReport),
+      OperationTimeline({ entries: timelineEntries, outcome: timelineOutcome, expandedIds: expandedTimelineIds, doctorReport }),
+      renderProjectLiveInfo(status, launchState, doctorReport),
+      '<details id="advancedSection" class="rounded-2xl bg-slate-50/45 p-4 shadow-sm border border-slate-200/60">',
+      '<summary class="cursor-pointer text-lg font-semibold text-slate-700">Advanced</summary>',
       '<div class="mt-4 space-y-4">',
+      renderDetectedStack(status),
       StatusSection({ status }),
+      `<div id="doctor-section">${DoctorSection({ doctor: doctorReport, loading })}</div>`,
       hasJobs
         ? `<details class="rounded-xl bg-slate-50 p-4 border border-slate-200"><summary class="cursor-pointer text-base font-semibold">Execution Queue (${operations.length})</summary><div class="mt-3">${ExecutionQueueSection({ operations })}</div></details>`
         : "",
-      '<section class="rounded-xl bg-white p-4 shadow-sm">',
+      '<section class="rounded-xl bg-white/75 p-4 shadow-sm border border-slate-200/70">',
       '<h2 class="text-lg font-semibold mb-3">Output</h2>',
       `<pre id="outputPanel" class="bg-slate-950 text-slate-100 rounded-md p-2 text-xs overflow-auto max-h-72">${escapeHtml(output)}</pre>`,
       "</section>",
-      SuggestionsSection({ suggestions, loading }),
       AutoModeSection({ loading }),
       '<div class="grid gap-4 md:grid-cols-2">',
       MacrosSection({ loading, macros: availableMacros }),
@@ -1780,6 +2129,7 @@ function App() {
     launchState,
     capabilities,
     suggestions,
+    doctorReport,
     operations,
     activityLog,
     chatText,
@@ -1795,6 +2145,7 @@ function App() {
     resultBanner,
     launchProgress,
     launchStepStates,
+    expandedTimelineIds,
   ]);
 
   return React.createElement("div", { dangerouslySetInnerHTML: { __html: html } });

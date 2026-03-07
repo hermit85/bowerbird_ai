@@ -21,16 +21,16 @@ export function generateSuggestions(state: any, capabilities?: Capabilities): Su
   if (state?.supabase?.connected && (!state?.supabase?.functions || state.supabase.functions.length === 0)) {
     suggestions.push({
       id: "deploy_supabase_function",
-      label: "Deploy Supabase function",
-      action: "deploy supabase function NAME",
+      label: "Deploy backend",
+      action: "deploy backend",
     });
   }
 
   if (!state?.env?.knownKeys || state.env.knownKeys.length < 2) {
     suggestions.push({
       id: "add_env",
-      label: "Add environment variable",
-      action: "add env KEY to vercel",
+      label: "Connect database",
+      action: "connect database",
     });
   }
 

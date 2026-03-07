@@ -1,6 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createInterface } from "node:readline/promises";
 import { getDryRun } from "../core/dryRun";
 import { getConfig } from "../core/config";
 import { fail, ok, warn } from "../core/reporter";
@@ -10,16 +9,23 @@ import { run, type RunResult } from "../core/runner";
 type DeployOptions = {
   prod: boolean;
   message: string;
+  autoConfirm: boolean;
 };
 
 function parseArgs(args: string[]): DeployOptions {
   let prod = false;
   let message = "chore: deploy";
+  let autoConfirm = false;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === "--prod") {
       prod = true;
+      continue;
+    }
+
+    if (arg === "--yes" || arg === "--confirm" || arg === "--non-interactive") {
+      autoConfirm = true;
       continue;
     }
 
@@ -32,7 +38,7 @@ function parseArgs(args: string[]): DeployOptions {
     }
   }
 
-  return { prod, message };
+  return { prod, message, autoConfirm };
 }
 
 function truncateLastLines(text: string, maxLines = 60): string {
@@ -82,20 +88,6 @@ function isNothingToCommitOutput(result: RunResult): boolean {
   );
 }
 
-async function confirmProdDeploy(): Promise<boolean> {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  try {
-    const answer = await rl.question("Deploy to production? (yes/no): ");
-    return answer.trim().toLowerCase() === "yes";
-  } finally {
-    rl.close();
-  }
-}
-
 async function executeOrBlock(
   cmd: string,
   args: string[],
@@ -136,8 +128,10 @@ export async function deploy(rawArgs: string[]): Promise<number> {
     ok("Planned: git add . (if changes detected)");
     ok(`Planned: git commit -m "${options.message}" (if changes detected)`);
     ok("Planned: git push");
+    if (options.prod && !options.autoConfirm) {
+      ok("Planned: skip production deploy (not enabled)");
+    }
     if (options.prod) {
-      ok("Planned: confirmation prompt for production deploy");
       ok("Planned: vercel --prod --yes");
     } else {
       ok("Planned: vercel deploy --yes");
@@ -186,12 +180,9 @@ export async function deploy(rawArgs: string[]): Promise<number> {
   }
   logs.push(commandLog("git", ["push"], pushStep.result));
 
-  if (options.prod) {
-    const confirmed = await confirmProdDeploy();
-    if (!confirmed) {
-      warn("Production deploy canceled by user");
-      return 0;
-    }
+  if (options.prod && !options.autoConfirm) {
+    warn("Production deploy not enabled.");
+    return 0;
   }
 
   const vercelArgs = options.prod ? ["--prod", "--yes"] : ["deploy", "--yes"];

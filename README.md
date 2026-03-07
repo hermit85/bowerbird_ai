@@ -1,9 +1,8 @@
-# BowerBird AI
-# BowerBird
+# deplo.app
 
-Infrastructure operator for builders who want to ship fast.
+Infrastructure operator for founders and AI builders who want to ship fast.
 
-BowerBird automates the painful parts of shipping projects:
+deplo.app automates the painful parts of shipping projects:
 - environment checks
 - build
 - git commit + push

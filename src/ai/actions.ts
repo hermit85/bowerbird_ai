@@ -1,20 +1,59 @@
 import { enqueue } from "../engine/engine";
-import { parseAIInstructions, type ExecutionAction, type ExecutionPlan } from "./parser";
+import { buildExecutionPlan } from "./planBuilder";
+import { parseAIInstructions } from "./parser";
+import { resolveCapabilities } from "./capabilityResolver";
+import type {
+  AIContext,
+  DetectionSummary,
+  ExecutionAction,
+  ParsedCommand,
+  ResolvedCapabilities,
+} from "./types";
 
 export type AIImportSummary = {
   actionsDetected: number;
   jobsQueued: number;
   actions: ExecutionAction[];
   jobIds: string[];
+  reasoning?: string[];
+  intents?: ParsedCommand["intents"];
+  capabilities?: ResolvedCapabilities;
 };
 
-export function detectAIInstructions(text: string): ExecutionPlan {
-  return parseAIInstructions(text);
+function defaultContext(): AIContext {
+  return {
+    stack: {
+      framework: null,
+      deploy: null,
+      database: null,
+      backend: null,
+    },
+    launch: {
+      databaseConnected: false,
+      backendDeployed: false,
+      previewReady: false,
+      appLive: false,
+    },
+  };
 }
 
-export function executeAIInstructions(text: string): AIImportSummary {
-  const plan = detectAIInstructions(text);
-  const actions = plan.actions;
+export function detectAIInstructions(text: string, context?: AIContext): DetectionSummary {
+  const parsed = parseAIInstructions(text);
+  const resolvedContext = context ?? defaultContext();
+  const capabilities = resolveCapabilities(resolvedContext);
+  const built = buildExecutionPlan(parsed.intents, capabilities, resolvedContext.launch);
+  return {
+    rawInput: text,
+    actions: built.steps,
+    reasoning: built.reasoning,
+    intents: parsed.intents,
+    capabilities,
+  };
+}
+
+export function executeAIInstructions(text: string, context?: AIContext): AIImportSummary {
+  const summary = detectAIInstructions(text, context);
+  const actions = summary.actions;
   const jobIds: string[] = [];
 
   for (const action of actions) {
@@ -31,7 +70,7 @@ export function executeAIInstructions(text: string): AIImportSummary {
       continue;
     }
     if (action.type === "connect_database") {
-      jobIds.push(enqueue("add_env", { key: "DATABASE_URL", value: "", target: "preview" }).id);
+      // Requires explicit user-provided DATABASE_URL; do not queue invalid empty-value env jobs.
       continue;
     }
     if (action.type === "deploy_supabase_function") {
@@ -47,10 +86,15 @@ export function executeAIInstructions(text: string): AIImportSummary {
       continue;
     }
     if (action.type === "env_add") {
+      const value = typeof action.value === "string" ? action.value : "";
+      if (!value) {
+        // Do not enqueue env mutations without explicit value.
+        continue;
+      }
       jobIds.push(
         enqueue("add_env", {
           key: action.key,
-          value: action.value ?? "",
+          value,
           target: "preview",
         }).id,
       );
@@ -66,5 +110,8 @@ export function executeAIInstructions(text: string): AIImportSummary {
     jobsQueued: jobIds.length,
     actions,
     jobIds,
+    reasoning: summary.reasoning,
+    intents: summary.intents,
+    capabilities: summary.capabilities,
   };
 }

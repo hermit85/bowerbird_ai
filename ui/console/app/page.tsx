@@ -77,7 +77,7 @@ export default function Page(): JSX.Element {
 
   return (
     <main>
-      <h1>BowerBird Console</h1>
+      <h1>deplo.app Console</h1>
       <p className="meta">Local control plane for repair-loop, patching, and artifact visibility.</p>
 
       <section>
