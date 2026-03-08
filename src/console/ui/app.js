@@ -206,25 +206,188 @@ function getPrimaryNextActionState(doctorReport) {
   if (environment.severity === "blocked") {
     return {
       mode: hasAutofix ? "setup_fix" : "setup_open",
-      subtitle: "Fix setup issues first before launching your app",
-      buttonLabel: hasAutofix ? "Fix environment" : "Open Doctor",
+      subtitle: "We found something missing. Let's fix this first.",
+      buttonLabel: hasAutofix ? "Fix this next" : "Review what's missing",
       loadingLabel: hasAutofix ? "Applying safe fixes..." : "Opening Doctor...",
     };
   }
   if (environment.severity === "warning") {
     return {
       mode: hasAutofix ? "setup_fix" : "setup_open",
-      subtitle: "Resolve setup issues first before launching your app",
-      buttonLabel: hasAutofix ? "Fix environment" : "Open Doctor",
+      subtitle: "You're close. One small setup step is still needed.",
+      buttonLabel: hasAutofix ? "Fix this next" : "Review what's missing",
       loadingLabel: hasAutofix ? "Applying safe fixes..." : "Opening Doctor...",
     };
   }
   return {
     mode: "shipping",
-    subtitle: "Launch your app",
-    buttonLabel: "Launch my app",
-    loadingLabel: "Launching...",
+    subtitle: "Take one guided step and move closer to sharing.",
+    buttonLabel: "Continue setup",
+    loadingLabel: "Creating...",
   };
+}
+
+function makerStepOutcome(step) {
+  const id = String(step?.id || "");
+  if (id === "founderConnectDbBtn") return "Connect one missing account";
+  if (id === "founderDeployFunctionsBtn") return "Set up key app features";
+  if (id === "founderPreviewBtn") return "Create a test version";
+  if (id === "founderLiveBtn") return "Share your app with people";
+  return String(step?.label || "Next step");
+}
+
+function makerStepResult(step) {
+  const id = String(step?.id || "");
+  if (id === "founderConnectDbBtn") return "Your app is connected and can save data.";
+  if (id === "founderDeployFunctionsBtn") return "Core app features are ready to run.";
+  if (id === "founderPreviewBtn") return "A test version is ready to review.";
+  if (id === "founderLiveBtn") return "Your app is ready to share with people.";
+  return "You move one step closer to sharing.";
+}
+
+function inferProjectType(rawIdea) {
+  const text = String(rawIdea || "").toLowerCase();
+  if (!text) return "app";
+  if (/\b(site|website|landing page|portfolio|page)\b/.test(text)) return "website";
+  if (/\b(app|tool|tracker|booking|dashboard|portal)\b/.test(text)) return "app";
+  return "complex";
+}
+
+function firstVersionSummary(projectType) {
+  if (projectType === "website") {
+    return [
+      "A clear page draft with your core message and layout.",
+      "A structure you can review quickly and adjust with plain language.",
+      "A first shareable version focused on the main page experience.",
+    ];
+  }
+  if (projectType === "app") {
+    return [
+      "A simple first flow people can try right away.",
+      "Key screens and interactions focused on your main use case.",
+      "A reviewable draft you can keep refining with requests.",
+    ];
+  }
+  return [
+    "A starter slice focused on your main flow first.",
+    "A practical first version you can review before expanding scope.",
+    "A clear path to iterate and then share when ready.",
+  ];
+}
+
+function previewIncludedList(projectType, ideaText) {
+  const idea = String(ideaText || "").trim();
+  const shortIdea = idea ? idea.replace(/^make\s+/i, "").replace(/^build\s+/i, "").slice(0, 64) : "";
+  const isBooking = /\b(book|booking|appointment|reserve|reservation)\b/i.test(idea);
+  if (isBooking) {
+    return [
+      shortIdea ? `A first booking-page draft for "${shortIdea}"` : "A first booking-page draft",
+      "A clear page layout with one visible booking call to action",
+      "A reviewable first page structure you can edit in plain language",
+    ];
+  }
+  if (projectType === "website") {
+    return [
+      shortIdea ? `A homepage draft for "${shortIdea}"` : "A homepage draft with clear structure",
+      "A simple layout with key sections and one main call to action",
+      "A reviewable first page you can refine before sharing",
+    ];
+  }
+  if (projectType === "app") {
+    return [
+      shortIdea ? `A starter app draft for "${shortIdea}"` : "A starter app draft for your main use case",
+      "Key screens arranged for a quick first walkthrough",
+      "A reviewable first draft ready for plain-language changes",
+    ];
+  }
+  return [
+    shortIdea ? `A focused starter slice for "${shortIdea}"` : "A focused starter slice for the main workflow",
+    "A concrete draft you can react to right away",
+    "A clear base you can expand after review",
+  ];
+}
+
+function renderFallbackDraftArtifact(projectType, ideaText) {
+  const headline = String(ideaText || "").trim()
+    ? String(ideaText).replace(/^make\s+/i, "").replace(/^build\s+/i, "").slice(0, 72)
+    : "Your first draft";
+  const isBooking = /\b(book|booking|appointment|reserve|reservation)\b/i.test(String(ideaText || ""));
+
+  if (isBooking) {
+    return `
+      <div class="rounded-xl border border-slate-200 bg-white p-3">
+        <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold text-slate-800">${escapeHtml(headline)}</div>
+            <div class="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-medium text-emerald-800">Book now</div>
+          </div>
+          <div class="mt-3 rounded-md border border-slate-200 bg-white p-3">
+            <div class="h-3 w-36 rounded bg-slate-300/70"></div>
+            <div class="mt-2 h-2.5 w-full rounded bg-slate-200/90"></div>
+            <div class="mt-1.5 h-2.5 w-10/12 rounded bg-slate-200/90"></div>
+            <div class="mt-3 grid grid-cols-2 gap-2">
+              <div class="h-12 rounded border border-sky-200/70 bg-sky-50/80"></div>
+              <div class="h-12 rounded border border-emerald-200/70 bg-emerald-50/80"></div>
+            </div>
+          </div>
+          <div class="mt-3 grid grid-cols-3 gap-2">
+            <div class="h-9 rounded border border-slate-200 bg-white"></div>
+            <div class="h-9 rounded border border-slate-200 bg-white"></div>
+            <div class="h-9 rounded border border-slate-200 bg-white"></div>
+          </div>
+          <div class="mt-3 rounded border border-indigo-200/80 bg-indigo-50/70 px-2.5 py-1.5 text-[11px] text-indigo-800">
+            Draft mode: review layout, copy, and booking flow
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (projectType === "website") {
+    return `
+      <div class="rounded-xl border border-slate-200 bg-white p-3">
+        <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+          <div class="text-sm font-semibold text-slate-800">${escapeHtml(headline)}</div>
+          <div class="mt-2 h-2.5 w-40 rounded bg-slate-300/70"></div>
+          <div class="mt-4 grid gap-2">
+            <div class="h-16 rounded border border-sky-200/80 bg-sky-50/80"></div>
+            <div class="h-16 rounded border border-emerald-200/80 bg-emerald-50/80"></div>
+            <div class="h-16 rounded border border-slate-200/80 bg-white"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (projectType === "app") {
+    return `
+      <div class="rounded-xl border border-slate-200 bg-white p-3">
+        <div class="mx-auto w-52 rounded-2xl border border-slate-300 bg-slate-50 p-3 shadow-sm">
+          <div class="text-xs text-slate-500">App draft</div>
+          <div class="mt-1 text-sm font-semibold text-slate-800">${escapeHtml(headline)}</div>
+          <div class="mt-3 space-y-2">
+            <div class="h-10 rounded bg-sky-100/80 border border-sky-200/70"></div>
+            <div class="h-10 rounded bg-emerald-100/80 border border-emerald-200/70"></div>
+            <div class="h-10 rounded bg-white border border-slate-200/90"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="rounded-xl border border-slate-200 bg-white p-3">
+      <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+        <div class="text-sm font-semibold text-slate-800">${escapeHtml(headline)}</div>
+        <div class="mt-3 grid grid-cols-2 gap-2">
+          <div class="h-16 rounded border border-sky-200/80 bg-sky-50/80"></div>
+          <div class="h-16 rounded border border-emerald-200/80 bg-emerald-50/80"></div>
+          <div class="h-16 rounded border border-slate-200/80 bg-white"></div>
+          <div class="h-16 rounded border border-slate-200/80 bg-white"></div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function renderFounderSetupProgress(launchState, loading, launchProgress, launchStepStates, doctorReport) {
@@ -235,56 +398,60 @@ function renderFounderSetupProgress(launchState, loading, launchProgress, launch
 
   const allDone = steps.every((step) => step.done);
   const hasIncomplete = steps.some((step) => !step.done);
+  const firstIncomplete = steps.find((step) => !step.done);
+  const needsActionNow = hasIncomplete || isSetupFirst;
+  const nextResult = isSetupFirst
+    ? "Your app will be ready to review and share."
+    : allDone
+      ? "Everything needed for sharing is in place."
+      : makerStepResult(firstIncomplete);
+  const remainingSteps = steps.filter((step) => !step.done);
   const rows = steps
     .map((step) => {
-      const busy = Boolean(loading?.[step.id]);
       const liveState = launchStepStates?.[step.id];
       const displayState = liveState || (step.done ? "completed" : "pending");
       if (displayState === "completed") {
-        return `<li class="py-1 text-sm text-emerald-800">✓ ${step.label}</li>`;
+        return `<li class="py-1 text-sm text-emerald-800">✓ ${makerStepOutcome(step)}</li>`;
       }
       const indicator = displayState === "running"
         ? '<span class="inline-block mr-2 text-blue-700 animate-pulse">●</span>'
-        : '<span class="inline-block mr-2 text-slate-500">→</span>';
-      return `<li class="py-1">
-        <button
-          id="${step.id}"
-          data-step-instruction="${step.instruction}"
-          ${step.requiresConfirm ? 'data-step-confirm="production"' : ""}
-          ${busy || displayState === "running" ? "disabled" : ""}
-          class="w-full text-left text-sm rounded-xl px-2.5 py-1.5 border border-slate-200/80 bg-white/70 text-slate-700 hover:bg-white hover:border-slate-300 transition ${(busy || displayState === "running") ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}"
-        >${indicator}${step.label}</button>
-      </li>`;
+        : '<span class="inline-block mr-2 text-slate-500">○</span>';
+      return `<li class="py-1 text-sm text-slate-700">${indicator}${makerStepOutcome(step)}</li>`;
     })
     .join("");
 
   const guidanceBanner = environment.severity === "blocked"
     ? `<div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50/90 p-4">
-      <div class="text-xs font-semibold tracking-wide text-rose-700">Setup needed now</div>
-      <p class="mt-1 text-sm text-rose-900">We found setup blockers. We will guide you step by step so you can keep moving.</p>
+      <div class="text-xs font-semibold tracking-wide text-rose-700">One thing to fix first</div>
+      <p class="mt-1 text-sm text-rose-900">We found something blocking progress. We can guide the safe part right now.</p>
     </div>`
     : environment.severity === "warning"
       ? `<div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50/90 p-4">
-        <div class="text-xs font-semibold tracking-wide text-amber-700">Setup needs attention</div>
-        <p class="mt-1 text-sm text-amber-900">Safe fixes run automatically, and production actions still require your approval.</p>
+        <div class="text-xs font-semibold tracking-wide text-amber-700">Almost there</div>
+        <p class="mt-1 text-sm text-amber-900">A small setup detail still needs your input.</p>
       </div>`
       : `<div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/90 p-4">
-        <div class="text-xs font-semibold tracking-wide text-emerald-700">Ready to move</div>
-        <p class="mt-1 text-sm text-emerald-900">Here is the fastest safe step forward.</p>
+        <div class="text-xs font-semibold tracking-wide text-emerald-700">Ready to move forward</div>
+        <p class="mt-1 text-sm text-emerald-900">We can safely prepare your next result now.</p>
       </div>`;
 
   return `
-    <section class="mt-8 rounded-3xl bg-gradient-to-b from-emerald-50/70 to-white/90 p-6 shadow-medium border border-emerald-100/70 transition-all duration-200">
+    <div class="rounded-2xl bg-gradient-to-b from-emerald-50/75 via-white/95 to-sky-50/50 p-6 shadow-soft border border-emerald-100/80 transition-all duration-200">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <h2 class="text-2xl font-semibold text-slate-900">Next best step</h2>
-          <p class="text-sm text-slate-600 mt-1">${escapeHtml(nextAction.subtitle)}</p>
-          <p class="mt-2 text-xs text-slate-500">You are guided step by step. Safe fixes run automatically, and you approve risky actions.</p>
+          <h2 class="text-3xl font-semibold text-slate-900">Your next step</h2>
+          <p class="text-base text-slate-700 mt-1">${
+            isSetupFirst
+              ? "One thing is still missing before you can share this."
+              : allDone
+                ? "Your first version is ready to share."
+                : `Do this now: ${escapeHtml(makerStepOutcome(firstIncomplete))}`
+          }</p>
         </div>
-        <span class="rounded-full px-3 py-1 text-xs font-medium ${isSetupFirst ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}">${isSetupFirst ? "Setup first" : "Shipping"}</span>
+        <span class="rounded-full px-3 py-1 text-xs font-medium ${isSetupFirst ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}">${isSetupFirst ? "Needs setup" : "On track"}</span>
       </div>
-      ${guidanceBanner}
-      ${hasIncomplete
+      ${isSetupFirst ? guidanceBanner : ""}
+      ${needsActionNow
         ? `<div class="mt-4">
           <button id="founderLaunchAppBtn" ${loading?.founderLaunchAppBtn ? "disabled" : ""} class="rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold shadow-medium hover:bg-emerald-800 hover:-translate-y-0.5 transition ${loading?.founderLaunchAppBtn ? "opacity-60 cursor-not-allowed" : ""}">${loading?.founderLaunchAppBtn ? nextAction.loadingLabel : nextAction.buttonLabel}</button>
         </div>`
@@ -292,21 +459,30 @@ function renderFounderSetupProgress(launchState, loading, launchProgress, launch
       ${launchProgress
         ? `<p class="mt-3 text-sm text-slate-700">${escapeHtml(launchProgress)}</p>`
         : ""}
-      <ul class="mt-4 space-y-1.5">${rows}</ul>
-      ${allDone ? '<p class="mt-3 text-sm font-medium text-emerald-700">Your app is live 🚀</p>' : ""}
-    </section>
+      ${remainingSteps.length > 0
+        ? `<details class="mt-4 rounded-2xl border border-slate-200/70 bg-white/70 p-3">
+            <summary class="cursor-pointer text-xs font-medium text-slate-600">Optional: view all steps (${remainingSteps.length} left)</summary>
+            <ul class="mt-2 space-y-1.5 text-xs">${rows}</ul>
+          </details>`
+        : ""}
+      ${allDone && !isSetupFirst ? '<p class="mt-3 text-sm font-medium text-emerald-700">Ready to share 🚀</p>' : ""}
+    </div>
   `;
 }
 
-function renderProjectLiveInfo(status, launchState, doctorReport) {
+function renderMakerProgressSnapshot(launchState, doctorReport, activityLog) {
   const appLive = isProjectLive(launchState);
   const dbConnected = Boolean(launchState?.databaseConnected);
   const environment = getEnvironmentStatusFromDoctor(doctorReport);
+  const shareReady = appLive && environment.severity === "ready";
+  const recent = Array.isArray(activityLog) ? activityLog.slice(0, 2) : [];
+  const recentLine = recent.length > 0
+    ? String(recent[0]?.message || "Progress updated")
+    : "We will show progress here as soon as you start.";
   const statusPill = (label, value, tone) => `
-    <div class="rounded-2xl border p-3.5 shadow-sm ${tone}">
-      <div class="text-xs tracking-wide text-slate-500">${label}</div>
-      <div class="mt-1 text-base font-semibold">${escapeHtml(value)}</div>
-      <div class="mt-1 text-xs text-slate-500">${label === "App" ? "Shipping status" : label === "Database" ? "Core data connection" : "Readiness check"}</div>
+    <div class="rounded-full border px-3 py-2 shadow-sm ${tone}">
+      <div class="text-[11px] tracking-wide text-slate-500">${label}</div>
+      <div class="text-sm font-semibold">${escapeHtml(value)}</div>
     </div>
   `;
   const appTone = appLive ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-slate-50 text-slate-800";
@@ -319,15 +495,18 @@ function renderProjectLiveInfo(status, launchState, doctorReport) {
         ? "border-amber-200 bg-amber-50 text-amber-900"
         : "border-slate-200 bg-slate-50 text-slate-800";
   return `
-    <section class="mt-8 rounded-3xl bg-white/85 p-6 shadow-soft border border-slate-200/65">
-      <h2 class="text-xl font-semibold">Project confidence</h2>
-      <p class="text-sm text-slate-600 mt-1">A calm snapshot of your launch readiness.</p>
-      <div class="mt-4 grid gap-3 md:grid-cols-3 text-sm">
-        ${statusPill("App", appLive ? "Live" : "In progress", appTone)}
-        ${statusPill("Database", dbConnected ? "Connected" : "Needs setup", dbTone)}
-        ${statusPill("Environment", environment.label, envTone)}
+    <div class="rounded-2xl bg-white/88 p-3.5 shadow-soft border border-slate-200/65">
+      <div class="flex items-center justify-between gap-2">
+        <h2 class="text-sm font-semibold text-slate-700">${shareReady ? "Share status" : "Before sharing"}</h2>
+        <span class="text-xs text-slate-500">${shareReady ? "Ready" : "Not ready yet"}</span>
       </div>
-    </section>
+      <div class="mt-2.5 flex flex-wrap gap-2 text-sm">
+        ${statusPill("Version", appLive ? "Complete" : "Building", appTone)}
+        ${statusPill("Connect", dbConnected ? "Done" : "Needed", dbTone)}
+        ${statusPill("Share", shareReady ? "Ready" : environment.label, envTone)}
+      </div>
+      <div class="mt-2 text-xs text-slate-500">Latest: ${escapeHtml(recentLine)}</div>
+    </div>
   `;
 }
 
@@ -548,137 +727,404 @@ function getDisplaySuggestions(baseSuggestions, doctorReport) {
   return deduped;
 }
 
-function renderAiChatExecutionPlanSection({ loading, text, steps, guidance, prodConfirmChecked, suggestions, doctorReport }) {
+function renderAiChatExecutionPlanSection({ loading, text, steps }) {
   const analyzeBusy = Boolean(loading.aiAnalyzeBtn);
-  const runBusy = Boolean(loading.aiRunPlanBtn);
-  const autoRunBusy = Boolean(loading.aiAutoRunSafeBtn);
   const quickBusy = Boolean(loading.operatorQuickLaunchBtn)
     || Boolean(loading.operatorQuickBackendBtn)
     || Boolean(loading.operatorQuickPreviewBtn)
     || Boolean(loading.operatorQuickLiveBtn);
   const hasActions = Array.isArray(steps) && steps.length > 0;
-  const hasProductionDeploy = Array.isArray(steps) && steps.some((step) => String(step?.operation) === "make_app_live");
-  const runDisabled = runBusy || !hasActions || (hasProductionDeploy && !prodConfirmChecked);
-  const safeTypes = new Set(["prepare_preview", "show_logs"]);
-  const safeOnly = hasActions && steps.every((step) => safeTypes.has(String(step?.operation)));
-  const statusClass = (status) => {
-    if (status === "running") return "text-blue-700";
-    if (status === "success") return "text-emerald-700";
-    if (status === "failed") return "text-rose-700";
-    if (status === "skipped") return "text-slate-500";
-    return "text-slate-500";
-  };
-  const statusBackgroundClass = (status) => {
-    if (status === "running") return "bg-sky-50 border-sky-200";
-    if (status === "success") return "bg-emerald-50 border-emerald-200";
-    if (status === "failed") return "bg-rose-50 border-rose-200";
-    if (status === "skipped") return "bg-slate-50 border-slate-200";
-    return "bg-white/90 border-slate-200";
-  };
-  const actionRows = Array.isArray(steps) && steps.length > 0
-    ? steps.map((step, index) =>
-      `<li class="rounded-xl border p-3 ${statusBackgroundClass(step?.status)}">
-        <div class="text-[11px] uppercase tracking-wide text-slate-500">Step ${index + 1}</div>
-        <div class="mt-1 text-sm font-medium text-slate-800">${escapeHtml(step?.label || `Step ${index + 1}`)}</div>
-        <div class="mt-1 text-[11px] uppercase tracking-wide ${statusClass(step?.status)}">Status: ${escapeHtml(step?.status || "pending")}</div>
-        ${step?.status === "failed" && step?.error
-          ? `<div class="mt-1 text-xs text-rose-700">${escapeHtml(String(step.error))}</div>`
-          : ""}
-        ${step?.status === "failed"
-          ? `<div class="mt-2">
-            <button id="retryPlanStepBtn-${index}" data-retry-step-index="${index}" ${loading?.[`retryPlanStepBtn-${index}`] ? "disabled" : ""} class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 ${loading?.[`retryPlanStepBtn-${index}`] ? "opacity-60 cursor-not-allowed" : ""}">${loading?.[`retryPlanStepBtn-${index}`] ? "Retrying..." : "Retry step"}</button>
-          </div>`
-          : ""}
-      </li>`,
-    ).join("")
-    : "";
-  const suggestionItems = getDisplaySuggestions(suggestions, doctorReport);
-  const suggestionRows = suggestionItems.length > 0
-    ? suggestionItems.map((suggestion, index) => {
-      const label = String(suggestion?.label || `Suggestion ${index + 1}`);
-      const command = String(suggestion?.command || "").trim();
-      const reason = String(suggestion?.reason || "").trim();
-      const kind = String(suggestion?.kind || "command");
-      return `<button
-        type="button"
-        id="commandSuggestionBtn-${index}"
-        class="w-full rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2.5 text-left hover:bg-slate-100 transition"
-        data-command-suggestion="${escapeHtml(command)}"
-        data-suggestion-kind="${escapeHtml(kind)}"
-      >
-        <div class="text-sm font-medium text-slate-800">${escapeHtml(label)}</div>
-        ${reason ? `<div class="mt-0.5 text-xs text-slate-600">${escapeHtml(reason)}</div>` : ""}
-      </button>`;
-    }).join("")
-    : `<div class="text-xs text-slate-500">No suggestions available right now.</div>`;
-  const intentRows = Array.isArray(steps) && steps.length > 0
-    ? steps.map((step) => `<li>✓ ${escapeHtml(friendlyIntent(step?.action || {}))}</li>`).join("")
-    : "<li>Your app is ready. Choose what you want to do next.</li>";
-  const guidanceClass = guidance?.tone === "ok"
-    ? "bg-emerald-100 border-emerald-300 text-emerald-900"
-    : guidance?.tone === "warn"
-      ? "bg-amber-100 border-amber-300 text-amber-900"
-      : guidance?.tone === "hint"
-        ? "bg-sky-100 border-sky-300 text-sky-900"
-        : "bg-slate-100 border-slate-300 text-slate-800";
 
   return `
-    <section class="rounded-3xl bg-gradient-to-b from-sky-50/75 to-white/90 p-6 shadow-medium border border-sky-100/70 transition-all duration-200">
-      <h2 class="text-2xl font-semibold">Welcome</h2>
-      <p class="text-sm text-slate-600 mt-1">What do you want to make?</p>
-      <label class="text-xs font-medium mt-4 block text-slate-600">Try a goal</label>
-      <div class="mt-2 flex flex-wrap gap-2.5">
-        <button id="operatorQuickLaunchBtn" data-operator-command="launch SaaS" ${quickBusy ? "disabled" : ""} class="rounded-full border border-slate-200/80 bg-white/80 px-3.5 py-1.5 text-xs text-slate-700 hover:bg-white transition ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Start my app</button>
-        <button id="operatorQuickBackendBtn" data-operator-command="deploy backend" ${quickBusy ? "disabled" : ""} class="rounded-full border border-slate-200/80 bg-white/80 px-3.5 py-1.5 text-xs text-slate-700 hover:bg-white transition ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Connect what’s missing</button>
-        <button id="operatorQuickPreviewBtn" data-operator-command="deploy preview" ${quickBusy ? "disabled" : ""} class="rounded-full border border-slate-200/80 bg-white/80 px-3.5 py-1.5 text-xs text-slate-700 hover:bg-white transition ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Make a test version</button>
-        <button id="operatorQuickLiveBtn" data-operator-command="make app live" ${quickBusy ? "disabled" : ""} class="rounded-full border border-slate-200/80 bg-white/80 px-3.5 py-1.5 text-xs text-slate-700 hover:bg-white transition ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Publish for people</button>
+    <div class="rounded-2xl bg-gradient-to-br from-sky-50/95 via-white to-emerald-50/55 p-7 shadow-medium border border-sky-100/80 transition-all duration-200">
+      <div class="text-xs font-medium uppercase tracking-wide text-sky-700/80">Start here</div>
+      <h2 class="mt-1 text-3xl font-semibold text-slate-900">What would you like to make?</h2>
+      <p class="text-sm text-slate-600 mt-2">Describe your idea in one sentence. Deplo turns it into a guided path.</p>
+      <div class="mt-3 flex flex-wrap gap-2.5">
+        <button id="operatorQuickLaunchBtn" data-operator-command="launch SaaS" ${quickBusy ? "disabled" : ""} class="rounded-full border border-slate-200/80 bg-white/80 px-3.5 py-1.5 text-xs text-slate-700 hover:bg-white transition ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Recipe app for my mom</button>
+        <button id="operatorQuickBackendBtn" data-operator-command="deploy backend" ${quickBusy ? "disabled" : ""} class="rounded-full border border-slate-200/80 bg-white/80 px-3.5 py-1.5 text-xs text-slate-700 hover:bg-white transition ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Booking page for my workshop</button>
+        <button id="operatorQuickPreviewBtn" data-operator-command="deploy preview" ${quickBusy ? "disabled" : ""} class="rounded-full border border-slate-200/80 bg-white/80 px-3.5 py-1.5 text-xs text-slate-700 hover:bg-white transition ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Dog care app</button>
+        <button id="operatorQuickLiveBtn" data-operator-command="make app live" ${quickBusy ? "disabled" : ""} class="rounded-full border border-slate-200/80 bg-white/80 px-3.5 py-1.5 text-xs text-slate-700 hover:bg-white transition ${quickBusy ? "opacity-60 cursor-not-allowed" : ""}">Website for my classes</button>
       </div>
-      <input id="ai-analyze-input" class="mt-3 rounded-2xl border border-slate-200/80 bg-white/85 text-sm shadow-inner focus:bg-white focus:border-slate-300" style="font-size:16px;padding:12px;width:420px;" placeholder="Make a recipe app for my mom" value="${escapeHtml(text || "")}" />
-      <div class="mt-2 text-xs text-slate-500">You don’t need technical words. Describe your goal.</div>
-      <div class="mt-1 text-xs text-slate-500">deplo.app handles safe steps and asks before sensitive ones.</div>
+      <input id="ai-analyze-input" class="mt-4 rounded-2xl border border-slate-200/80 bg-white/90 text-sm shadow-inner focus:bg-white focus:border-slate-300" style="font-size:16px;padding:13px;width:440px;max-width:100%;" placeholder="Make a booking page for my brother's workshop" value="${escapeHtml(text || "")}" />
+      <div class="mt-2 text-xs text-slate-500">Most people start with one sentence. You can change everything later.</div>
+      <div class="mt-2 text-xs text-slate-500">You do not need technical words. Deplo handles safe parts and asks before sensitive ones.</div>
       <div class="mt-4">
-        <div class="text-xs font-medium text-slate-600">Helpful starters</div>
-        <div class="mt-2 space-y-2">${suggestionRows}</div>
+        <button id="aiAnalyzeBtn" ${analyzeBusy ? "disabled" : ""} class="rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold shadow-medium hover:bg-emerald-800 hover:-translate-y-0.5 transition ${analyzeBusy ? "opacity-60 cursor-not-allowed" : ""}">${analyzeBusy ? "Starting..." : "Start with this idea"}</button>
       </div>
-      <div class="mt-4">
-        <button id="aiAnalyzeBtn" ${analyzeBusy ? "disabled" : ""} class="rounded-full bg-slate-700 text-white px-4 py-2.5 text-sm font-medium shadow-soft hover:bg-slate-800 hover:-translate-y-0.5 transition ${analyzeBusy ? "opacity-60 cursor-not-allowed" : ""}">${analyzeBusy ? "Checking..." : "Show steps"}</button>
-        <button id="aiRunPlanBtn" ${runDisabled ? "disabled" : ""} class="ml-2 rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold shadow-medium hover:bg-emerald-800 hover:-translate-y-0.5 transition ${runDisabled ? "opacity-60 cursor-not-allowed" : ""}">${runBusy ? "Starting..." : "Start guided steps"}</button>
-      </div>
-      ${hasProductionDeploy
-        ? `<div class="mt-3 rounded-lg border border-amber-300 bg-amber-100 p-3 text-amber-900">
-          <div class="text-sm font-semibold">Publishing for people affects your live app. Please confirm.</div>
-          <label class="mt-2 flex items-center gap-2 text-sm">
-            <input id="prodConfirmCheckbox" type="checkbox" ${prodConfirmChecked ? "checked" : ""} />
-            <span>I confirm publishing</span>
-          </label>
-        </div>`
-        : ""}
-      ${safeOnly
-        ? `<div class="mt-3 rounded-xl border border-emerald-300 bg-emerald-100 p-3 text-emerald-900">
-          <div class="text-sm font-semibold">Safe to run automatically</div>
-          <button id="aiAutoRunSafeBtn" ${autoRunBusy ? "disabled" : ""} class="mt-2 rounded-full bg-emerald-700 text-white px-3.5 py-2 text-sm font-medium shadow-sm ${autoRunBusy ? "opacity-60 cursor-not-allowed" : ""}">${autoRunBusy ? "Running..." : "Auto-run safe actions"}</button>
-        </div>`
-        : ""}
       ${hasActions
-        ? `<div class="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3">
-          <div class="text-sm font-semibold text-slate-800">What deplo.app will do</div>
-          <ul class="mt-1 text-sm text-slate-700 space-y-1">${intentRows}</ul>
+        ? `<p class="mt-3 text-sm text-slate-600">Great. We turned your idea into a guided path.</p>`
+        : ""}
+    </div>
+  `;
+}
+
+function renderMakerPostClickFlow({
+  started,
+  analyzing,
+  executionPlan,
+  status,
+  launchState,
+  launchStepStates,
+  launchProgress,
+  doctorReport,
+  loading,
+}) {
+  if (!started) {
+    return "";
+  }
+
+  const hasPlan = Array.isArray(executionPlan?.actions) && executionPlan.actions.length > 0;
+  const stepStates = launchStepStates && typeof launchStepStates === "object" ? launchStepStates : {};
+  const isRunningLaunch = Boolean(launchProgress) || Object.values(stepStates).some((value) => value === "running");
+  const readyForReview = Boolean(launchState?.previewReady || launchState?.appLive);
+  const steps = getLaunchChecklist(launchState);
+  const firstIncomplete = steps.find((step) => !step.done);
+  const nextAction = getPrimaryNextActionState(doctorReport);
+  const ideaText = String(executionPlan?.rawInput || "");
+  const projectType = inferProjectType(ideaText);
+  const summaryLines = firstVersionSummary(projectType);
+  const firstVersionUrl = String(status?.vercel?.lastDeployUrl || "").trim();
+  const canOpenFirstVersion = Boolean(firstVersionUrl);
+  const needsInput = Boolean(firstIncomplete) && nextAction.mode !== "shipping";
+
+  const phase = (label, state, detail) => {
+    const tone = state === "done"
+      ? "text-emerald-800 bg-emerald-50 border-emerald-200"
+      : state === "running"
+        ? "text-sky-800 bg-sky-50 border-sky-200"
+        : "text-slate-700 bg-white/85 border-slate-200";
+    const marker = state === "done" ? "✓" : state === "running" ? "●" : "○";
+    return `<div class="rounded-xl border px-3 py-2.5 ${tone}">
+      <div class="text-sm font-medium">${marker} ${escapeHtml(label)}</div>
+      <div class="mt-1 text-xs opacity-80">${escapeHtml(detail)}</div>
+    </div>`;
+  };
+
+  const flowRows = [
+    phase("We got your idea", "done", "You are in guided creation now."),
+    phase(
+      "We're preparing your first version",
+      analyzing || (!hasPlan && started) ? "running" : "done",
+      analyzing ? "This takes a moment." : "A reviewable first result is on the way.",
+    ),
+    phase(
+      "One thing may need your approval",
+      "pending",
+      isRunningLaunch ? "Safe parts are already being handled." : "We'll ask before sensitive changes.",
+    ),
+  ].join("");
+
+  const nextResult = readyForReview
+    ? "Your first version is ready to review."
+    : "Next, you'll review your first version.";
+  const nextMove = firstIncomplete ? makerStepOutcome(firstIncomplete) : "Review your first version";
+  const showLaunchButton = Boolean(firstIncomplete);
+
+  return `
+    <div class="mt-5 rounded-2xl border border-emerald-100/90 bg-white/90 p-4 shadow-soft">
+      <h3 class="text-base font-semibold text-slate-900">Your first version</h3>
+      <p class="mt-1 text-sm text-slate-600">You can change anything.</p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button id="openFirstVersionBtn" class="rounded-full bg-emerald-700 text-white px-4 py-2 text-sm font-semibold shadow-medium hover:bg-emerald-800 hover:-translate-y-0.5 transition">Open first version</button>
+        <button id="requestChangesBtn" class="rounded-full border border-slate-300/80 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition">Request changes</button>
+      </div>
+      <div class="mt-3 grid gap-2 md:grid-cols-3">${flowRows}</div>
+      <div class="mt-3 rounded-xl border border-slate-200 bg-white/90 px-3 py-2.5">
+        <div class="text-sm font-medium text-slate-800">What we made</div>
+        <ul class="mt-1 space-y-1 text-xs text-slate-600">
+          ${summaryLines.map((line) => `<li>• ${escapeHtml(line)}</li>`).join("")}
+        </ul>
+      </div>
+      ${needsInput
+        ? `<div class="mt-3 rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2.5">
+          <div class="text-sm font-medium text-amber-900">Needs your input</div>
+          <div class="mt-1 text-xs text-amber-800">${escapeHtml(makerStepOutcome(firstIncomplete))}</div>
+        </div>`
+        : ""}
+      <div class="mt-3 rounded-xl border border-slate-200 bg-white/90 px-3 py-2.5">
+        <div class="text-sm font-medium text-slate-800">Next up: ${escapeHtml(nextMove)}</div>
+        <div class="mt-1 text-xs text-slate-600">One clear move is enough. We handle safe parts and ask before sensitive ones.</div>
+        ${showLaunchButton
+          ? `<button id="founderLaunchAppBtn" ${loading?.founderLaunchAppBtn ? "disabled" : ""} class="mt-2 rounded-full bg-emerald-700 text-white px-4 py-2 text-sm font-semibold shadow-medium hover:bg-emerald-800 hover:-translate-y-0.5 transition ${loading?.founderLaunchAppBtn ? "opacity-60 cursor-not-allowed" : ""}">${loading?.founderLaunchAppBtn ? nextAction.loadingLabel : nextAction.buttonLabel}</button>`
+          : ""}
+      </div>
+      ${launchProgress ? `<p class="mt-2 text-sm text-slate-700">${escapeHtml(launchProgress)}</p>` : ""}
+      <div class="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/90 px-3 py-2 text-sm text-emerald-900">
+        ${escapeHtml(nextResult)} ${canOpenFirstVersion ? "If this already looks right, you can share when ready." : "Once ready, you'll be able to review and share."}
+      </div>
+    </div>
+  `;
+}
+
+function renderFirstVersionContent({ status, executionPlan, launchState, doctorReport, appliedChangeRequest = "" }) {
+  const ideaText = String(executionPlan?.rawInput || "");
+  const projectType = inferProjectType(ideaText);
+  const included = previewIncludedList(projectType, ideaText);
+  const hasAppliedUpdate = String(appliedChangeRequest || "").trim().length > 0;
+  const appliedUpdateText = String(appliedChangeRequest || "").trim();
+  const firstVersionUrl = String(status?.vercel?.lastDeployUrl || "").trim();
+  const hasLivePreview = Boolean(firstVersionUrl);
+  const needsInput = getPrimaryNextActionState(doctorReport).mode !== "shipping";
+  const shareReady = Boolean(launchState?.appLive);
+  const readinessMessage = needsInput
+    ? "One detail still needs your input before sharing."
+    : shareReady
+      ? "This version is ready to share when you are ready."
+      : "Review this version first, then share when it feels right.";
+  const readinessTone = needsInput
+    ? "border-amber-200 bg-amber-50/90 text-amber-900"
+    : "border-emerald-200 bg-emerald-50/90 text-emerald-900";
+  const previewTitle = projectType === "website"
+    ? "Homepage draft"
+    : projectType === "app"
+      ? "App starter draft"
+      : "Starter draft";
+
+  return `
+    <section class="rounded-[32px] border border-slate-200/75 bg-white/82 p-5 shadow-medium space-y-4">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-2xl font-semibold text-slate-900">Your first version</h2>
+          <p class="mt-1 text-sm text-slate-600">You can review this draft and request changes in plain language.</p>
         </div>
-        <div class="mt-3">
-          <div class="rounded-lg border p-3 ${guidanceClass}">
-            <div class="text-sm font-semibold">${escapeHtml(guidance?.label || "Ready to run")}</div>
-            <div class="text-sm mt-1">${escapeHtml(guidance?.message || "")}</div>
-          </div>
-        </div>`
-        : '<p class="mt-3 text-sm text-slate-600">Paste instructions from AI to run tasks automatically.</p>'}
-      ${hasActions
-        ? `<div class="mt-3">
-          <div class="text-sm font-semibold text-slate-800">What will happen next</div>
-          <ol class="mt-2 space-y-2">${actionRows}</ol>
-        </div>`
-        : ""}
+        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">${projectType === "website" ? "Website draft" : projectType === "app" ? "App draft" : "Starter draft"}</span>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/60 p-4">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-sm font-medium text-slate-800">Draft preview</div>
+          <div class="text-xs ${hasAppliedUpdate ? "text-emerald-700 font-medium" : "text-slate-500"}">${hasAppliedUpdate ? "Updated version" : escapeHtml(previewTitle)}</div>
+        </div>
+        ${hasLivePreview
+          ? `<div class="mt-2 overflow-hidden rounded-xl border border-slate-200">
+              <iframe src="${escapeHtml(firstVersionUrl)}" title="First version preview" class="h-80 w-full bg-white"></iframe>
+            </div>`
+          : `<div class="mt-2">
+              ${renderFallbackDraftArtifact(projectType, ideaText)}
+              <p class="mt-3 text-sm text-slate-600">Your visual draft is being assembled. You can already request changes based on this starter version.</p>
+            </div>`}
+        ${hasAppliedUpdate
+          ? `<div class="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-sm text-emerald-900">
+              Updated from your request: ${escapeHtml(appliedUpdateText)}
+            </div>`
+          : ""}
+        <div class="mt-3 grid gap-2 md:grid-cols-3 text-xs text-slate-600">
+          <div class="rounded-lg border border-slate-200 bg-white/90 px-2.5 py-2">Review: layout and flow</div>
+          <div class="rounded-lg border border-slate-200 bg-white/90 px-2.5 py-2">Change: text, sections, behavior</div>
+          <div class="rounded-lg border border-slate-200 bg-white/90 px-2.5 py-2">Share: when this feels right</div>
+        </div>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <div class="text-sm font-medium text-slate-800">What we made</div>
+        <ul class="mt-2 space-y-1 text-sm text-slate-600">
+          ${hasAppliedUpdate ? `<li>• Updated based on your request: ${escapeHtml(appliedUpdateText)}</li>` : ""}
+          ${included.map((line) => `<li>• ${escapeHtml(line)}</li>`).join("")}
+        </ul>
+      </div>
+
+      <div class="rounded-xl px-3 py-2 text-sm ${readinessTone}">
+        ${readinessMessage}
+      </div>
+
+      <div class="flex flex-wrap gap-2.5">
+        <button id="requestChangesFromPreviewBtn" class="rounded-full border border-slate-300/80 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition">Request changes</button>
+        <button id="closeFirstVersionPreviewBtn" class="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition">Back to setup</button>
+      </div>
     </section>
   `;
+}
+
+function renderWhatHappensNextCard() {
+  return `
+    <div class="rounded-2xl bg-sky-50/70 p-4 shadow-soft border border-sky-100/80">
+      <h2 class="text-lg font-semibold">What Deplo does first</h2>
+      <p class="mt-1 text-sm text-slate-600">From your idea to a first version, with calm guidance at each step.</p>
+      <div class="mt-3 rounded-xl border border-sky-100 bg-white/85 p-3">
+        <div class="flex flex-col gap-2 text-sm text-slate-700 md:flex-row md:items-center md:gap-3">
+          <span class="rounded-full bg-sky-100 px-3 py-1 text-sky-900">First version</span>
+          <span class="hidden md:inline text-slate-400">→</span>
+          <span class="rounded-full bg-emerald-100 px-3 py-1 text-emerald-900">Safe fixes</span>
+          <span class="hidden md:inline text-slate-400">→</span>
+          <span class="rounded-full bg-amber-100 px-3 py-1 text-amber-900">Your approval</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMakerDashboard({
+  loading,
+  executionPlan,
+  status,
+  launchState,
+  launchProgress,
+  launchStepStates,
+  doctorReport,
+  activityLog,
+  makerStarted,
+}) {
+  const postClickActive = Boolean(makerStarted);
+  const inFlowBlock = postClickActive
+    ? renderMakerPostClickFlow({
+      started: makerStarted,
+      analyzing: Boolean(loading.aiAnalyzeBtn),
+      executionPlan,
+      launchState,
+      status,
+      launchStepStates,
+      launchProgress,
+      doctorReport,
+      loading,
+    })
+    : renderWhatHappensNextCard();
+  return [
+    '<div class="max-w-5xl mx-auto p-4 space-y-4" id="appBody">',
+    '<style>#appBody section{transition:box-shadow .2s ease, transform .2s ease} #appBody section:hover{box-shadow:0 18px 34px rgba(15,23,42,.06)}</style>',
+    '<section class="rounded-[32px] border border-slate-200/75 bg-white/78 p-4 shadow-medium space-y-4">',
+    renderAiChatExecutionPlanSection({
+      loading,
+      text: executionPlan.rawInput,
+      steps: executionPlan.steps,
+    }),
+    inFlowBlock,
+    '<div class="border-t border-slate-200/70"></div>',
+    "</section>",
+    postClickActive ? "" : renderFounderSetupProgress(launchState, loading, launchProgress, launchStepStates, doctorReport),
+    '<div class="flex justify-center py-1">',
+    '<button id="openFirstVersionBtn" class="rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold shadow-medium hover:bg-emerald-800 hover:-translate-y-0.5 transition">Open first version →</button>',
+    '</div>',
+    '<section class="rounded-[28px] border border-slate-200/70 bg-white/75 p-4 shadow-soft">',
+    renderMakerProgressSnapshot(launchState, doctorReport, activityLog),
+    "</section>",
+    '<section class="rounded-xl border border-slate-200/60 bg-white/60 p-3 shadow-sm">',
+    '<div class="flex items-center justify-between gap-3">',
+    '<p class="text-sm text-slate-500">Need deeper controls?</p>',
+    '<button id="openExpertToolsBtn" class="rounded-full border border-slate-300/80 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition">Open expert tools</button>',
+    "</div>",
+    "</section>",
+    "</div>",
+  ].join("");
+}
+
+function renderFirstVersionScreen({ status, executionPlan, launchState, doctorReport, appliedChangeRequest = "" }) {
+  return [
+    '<div class="max-w-5xl mx-auto p-4 space-y-4" id="appBody">',
+    renderFirstVersionContent({ status, executionPlan, launchState, doctorReport, appliedChangeRequest }),
+    "</div>",
+  ].join("");
+}
+
+function renderChangeRequestScreen({ validationMessage = "" }) {
+  return [
+    '<div class="max-w-3xl mx-auto p-4 space-y-4" id="appBody">',
+    '<section class="rounded-[32px] border border-slate-200/75 bg-white/82 p-6 shadow-medium">',
+    '<h2 class="text-2xl font-semibold text-slate-900">Request changes</h2>',
+    '<p class="mt-2 text-sm text-slate-600">Describe what you want to change in plain language. Deplo will update the draft and you can keep iterating.</p>',
+    '<div class="mt-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs text-slate-600">',
+    '<div>Try:</div>',
+    '<div class="mt-1">• Make the button bigger</div>',
+    '<div>• Add a short description of the workshop</div>',
+    '<div>• Use softer colors</div>',
+    '<div>• Add a booking form</div>',
+    "</div>",
+    '<textarea id="changeRequestInput" class="mt-4 w-full rounded-2xl border border-slate-200/80 bg-white p-3 text-sm text-slate-800 focus:border-slate-300" rows="6" placeholder="Describe the change you want..."></textarea>',
+    validationMessage
+      ? `<p class="mt-2 text-sm text-rose-700">${escapeHtml(validationMessage)}</p>`
+      : "",
+    '<div class="mt-4 flex flex-wrap gap-2.5">',
+    '<button id="submitChangeRequestBtn" class="rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-medium hover:bg-emerald-800 hover:-translate-y-0.5 transition">Update draft</button>',
+    '<button id="cancelChangeRequestBtn" class="rounded-full border border-slate-300/80 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition">Back</button>',
+    "</div>",
+    "</section>",
+    "</div>",
+  ].join("");
+}
+
+function renderUpdatingDraftScreen({ requestSummary = "" }) {
+  const verbatim = String(requestSummary || "").trim();
+  return [
+    '<div class="max-w-3xl mx-auto p-4 space-y-4" id="appBody">',
+    '<section class="rounded-[32px] border border-slate-200/75 bg-white/82 p-6 shadow-medium text-center">',
+    '<h2 class="text-2xl font-semibold text-slate-900">Updating your draft</h2>',
+    '<p class="mt-2 text-sm text-slate-600">Deplo is applying your request.</p>',
+    verbatim
+      ? `<div class="mt-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-left text-sm text-slate-700"><span class="font-medium">Your request:</span> ${escapeHtml(verbatim)}</div>`
+      : "",
+    verbatim
+      ? `<pre class="mt-2 overflow-auto rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs text-slate-700">${escapeHtml(verbatim)}</pre>`
+      : "",
+    '<div class="mt-4 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-800">',
+    '<span class="inline-block h-2 w-2 animate-pulse rounded-full bg-sky-500"></span>',
+    '<span>Change request received</span>',
+    '</div>',
+    '<div class="mt-5">',
+    '<button id="backToFirstVersionAfterUpdateBtn" class="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition">See updated version</button>',
+    '</div>',
+    '</section>',
+    '</div>',
+  ].join("");
+}
+
+function expertViewHtml({
+  timelineEntries,
+  timelineOutcome,
+  expandedTimelineIds,
+  doctorReport,
+  status,
+  hasJobs,
+  operations,
+  output,
+  loading,
+  availableMacros,
+  capabilities,
+  chatText,
+  chatActions,
+  chatEmptyMessage,
+  instruction,
+}) {
+  return [
+    '<div class="max-w-6xl mx-auto p-4 space-y-6" id="appBody">',
+    '<style>#appBody section, #appBody details{transition:box-shadow .2s ease, transform .2s ease} #appBody section:hover{box-shadow:0 18px 34px rgba(15,23,42,.06)}</style>',
+    '<section class="rounded-2xl bg-slate-900 text-slate-50 p-4 shadow-medium border border-slate-700/70">',
+    '<div class="flex flex-wrap items-center justify-between gap-3">',
+    '<div>',
+    '<h1 class="text-xl font-semibold">Expert tools</h1>',
+    '<p class="text-sm text-slate-300">Technical controls, diagnostics, and operator workflows.</p>',
+    "</div>",
+    '<button id="closeExpertToolsBtn" class="rounded-full border border-slate-500/70 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700 transition">Back to maker view</button>',
+    "</div>",
+    "</section>",
+    '<div class="space-y-4">',
+    OperationTimeline({ entries: timelineEntries, outcome: timelineOutcome, expandedIds: expandedTimelineIds, doctorReport }),
+    renderDetectedStack(status),
+    StatusSection({ status }),
+    `<div id="doctor-section">${DoctorSection({ doctor: doctorReport, loading })}</div>`,
+    hasJobs
+      ? `<details class="rounded-xl bg-slate-50 p-4 border border-slate-200"><summary class="cursor-pointer text-base font-semibold">Execution Queue (${operations.length})</summary><div class="mt-3">${ExecutionQueueSection({ operations })}</div></details>`
+      : "",
+    '<section class="rounded-xl bg-white/75 p-4 shadow-sm border border-slate-200/70">',
+    '<h2 class="text-lg font-semibold mb-3">Output</h2>',
+    `<pre id="outputPanel" class="bg-slate-950 text-slate-100 rounded-md p-2 text-xs overflow-auto max-h-72">${escapeHtml(output)}</pre>`,
+    "</section>",
+    AutoModeSection({ loading }),
+    '<div class="grid gap-4 md:grid-cols-2">',
+    MacrosSection({ loading, macros: availableMacros }),
+    QuickActionsSection({ loading, capabilities }),
+    "</div>",
+    '<div class="grid gap-4 md:grid-cols-2">',
+    RepairSection({ status, loading, capabilities }),
+    EnvironmentSection({ status, loading, capabilities }),
+    "</div>",
+    '<div class="grid gap-4 md:grid-cols-2">',
+    ChatImportSection({ loading, chatText, parsedActions: chatActions, emptyMessage: chatEmptyMessage }),
+    InstructionSection({ instruction, loading }),
+    "</div>",
+    DeploymentSection({ loading, capabilities }),
+    "</div>",
+    "</div>",
+  ].join("");
 }
 
 function computeExecutionPlanGuidance(text, actions, status) {
@@ -720,6 +1166,14 @@ function computeExecutionPlanGuidance(text, actions, status) {
     tone: "neutral",
     message: "Describe your idea in one sentence, for example: Make a recipe app for my mom.",
   };
+}
+
+function readChangeRequestText() {
+  const textArea = document.getElementById("changeRequestInput");
+  if (!(textArea instanceof HTMLTextAreaElement)) {
+    return "";
+  }
+  return String(textArea.value || "").trim();
 }
 
 function App() {
@@ -793,6 +1247,13 @@ function App() {
   const [launchStateOverrides, setLaunchStateOverrides] = useState({});
   const [activityLog, setActivityLog] = useState([]);
   const [expandedTimelineIds, setExpandedTimelineIds] = useState(new Set());
+  const [expertMode, setExpertMode] = useState(false);
+  const [makerStarted, setMakerStarted] = useState(false);
+  const [makerScreen, setMakerScreen] = useState("dashboard");
+  const [changeRequestBackScreen, setChangeRequestBackScreen] = useState("first-version");
+  const [changeRequestValidation, setChangeRequestValidation] = useState("");
+  const [lastSubmittedChangeRequest, setLastSubmittedChangeRequest] = useState("");
+  const [lastAppliedChangeRequest, setLastAppliedChangeRequest] = useState("");
   const operationStatusRef = useRef({});
   const launchState = mergeLaunchState(getLaunchState(status), launchStateOverrides);
 
@@ -1376,14 +1837,13 @@ function markAction(label, outcome, details) {
       }
 
       const openDoctorSection = () => {
-        const advanced = document.getElementById("advancedSection");
-        if (advanced instanceof HTMLDetailsElement) {
-          advanced.open = true;
-        }
-        const doctorEl = document.getElementById("doctor-section");
-        if (doctorEl instanceof HTMLElement) {
-          doctorEl.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
+        setExpertMode(true);
+        window.setTimeout(() => {
+          const doctorEl = document.getElementById("doctor-section");
+          if (doctorEl instanceof HTMLElement) {
+            doctorEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 80);
       };
 
       try {
@@ -1417,6 +1877,7 @@ function markAction(label, outcome, details) {
           setExecutionPlan((prev) => ({ ...prev, rawInput: suggestion }));
           setCommandText(suggestion);
           setCommandFocused(false);
+          setMakerScreen("dashboard");
           return;
         }
 
@@ -1447,6 +1908,80 @@ function markAction(label, outcome, details) {
           return;
         }
 
+        if (target.id === "openExpertToolsBtn") {
+          setExpertMode(true);
+          return;
+        }
+
+        if (target.id === "openFirstVersionBtn") {
+          setMakerScreen("first-version");
+          return;
+        }
+
+        if (target.id === "requestChangesBtn") {
+          setChangeRequestBackScreen("dashboard");
+          setChangeRequestValidation("");
+          setMakerScreen("request-changes");
+          return;
+        }
+
+        if (target.id === "requestChangesFromPreviewBtn") {
+          setChangeRequestBackScreen("first-version");
+          setChangeRequestValidation("");
+          setMakerScreen("request-changes");
+          return;
+        }
+
+        if (target.id === "openFirstVersionExternalBtn") {
+          const firstVersionUrl = String(status?.vercel?.lastDeployUrl || "").trim();
+          if (firstVersionUrl) {
+            window.open(firstVersionUrl, "_blank", "noopener,noreferrer");
+          }
+          return;
+        }
+
+        if (target.id === "closeFirstVersionPreviewBtn") {
+          setMakerScreen("dashboard");
+          return;
+        }
+
+        if (target.id === "cancelChangeRequestBtn") {
+          setChangeRequestValidation("");
+          setMakerScreen(changeRequestBackScreen === "dashboard" ? "dashboard" : "first-version");
+          return;
+        }
+
+        if (target.id === "submitChangeRequestBtn" || target.closest("#submitChangeRequestBtn")) {
+          const requestText = readChangeRequestText();
+          if (!requestText) {
+            setChangeRequestValidation("Write one change you want first.");
+            return;
+          }
+          setChangeRequestValidation("");
+          setLastSubmittedChangeRequest(requestText);
+          setLastAppliedChangeRequest("");
+          setMakerStarted(true);
+          setMakerScreen("updating-draft");
+          setOutput("Change request added.");
+          return;
+        }
+
+        if (target.id === "backToFirstVersionAfterUpdateBtn") {
+          setLastAppliedChangeRequest(lastSubmittedChangeRequest);
+          setMakerScreen("first-version");
+          return;
+        }
+
+        if (target.id === "backToDashboardBtn") {
+          setMakerScreen("dashboard");
+          return;
+        }
+
+        if (target.id === "closeExpertToolsBtn") {
+          setExpertMode(false);
+          return;
+        }
+
         if (target.id === "commandCenterRunBtn") {
           await runAction("commandCenterRunBtn", "Run command", async () => {
             const inputEl = document.getElementById("command-center-input");
@@ -1474,11 +2009,15 @@ function markAction(label, outcome, details) {
 
         const quickCommand = String(target.dataset?.operatorCommand || "").trim();
         if (quickCommand) {
+          setMakerStarted(true);
+          setMakerScreen("dashboard");
           await runAction(target.id, "Analyze", async () => analyzeOperatorInput(quickCommand));
           return;
         }
 
         if (target.id === "aiAnalyzeBtn") {
+          setMakerStarted(true);
+          setMakerScreen("dashboard");
           await runAction("aiAnalyzeBtn", "Analyze", async () => {
             const inputEl = document.getElementById("ai-analyze-input");
             const text = inputEl instanceof HTMLInputElement || inputEl instanceof HTMLTextAreaElement ? inputEl.value : "";
@@ -2071,59 +2610,53 @@ function markAction(label, outcome, details) {
   const html = useMemo(() => {
     const availableMacros = ALL_MACROS.filter((macro) => macro.steps.every((step) => stepSupported(step, capabilities)));
     const hasJobs = Array.isArray(operations) && operations.length > 0;
-    const heroState = detectHeroState(status, operations);
-    const errorSummary = extractErrorSummary(status);
-    const guidance = computeExecutionPlanGuidance(executionPlan.rawInput, executionPlan.actions, status);
     const timelineEntries = buildTimeline(activityLog, operations, executionPlan, prodConfirmChecked);
     const timelineOutcome = computeOutcome(timelineEntries);
-    return [
-      '<div class="max-w-6xl mx-auto p-4 space-y-6" id="appBody">',
-      '<style>#appBody section, #appBody details{transition:box-shadow .2s ease, transform .2s ease} #appBody section:hover{box-shadow:0 18px 34px rgba(15,23,42,.06)}</style>',
-      '<h1 class="text-2xl font-bold">deplo.app</h1>',
-      '<p class="text-sm text-slate-600">Guided shipping for founders building with AI. Safe fixes are automatic, production actions stay in your control.</p>',
-      renderAiChatExecutionPlanSection({
-        loading,
-        text: executionPlan.rawInput,
-        steps: executionPlan.steps,
-        guidance,
-        prodConfirmChecked,
-        suggestions,
+    if (expertMode) {
+      return expertViewHtml({
+        timelineEntries,
+        timelineOutcome,
+        expandedTimelineIds,
         doctorReport,
-      }),
-      renderFounderSetupProgress(launchState, loading, launchProgress, launchStepStates, doctorReport),
-      OperationTimeline({ entries: timelineEntries, outcome: timelineOutcome, expandedIds: expandedTimelineIds, doctorReport }),
-      renderProjectLiveInfo(status, launchState, doctorReport),
-      '<details id="advancedSection" class="rounded-2xl bg-slate-50/45 p-4 shadow-sm border border-slate-200/60">',
-      '<summary class="cursor-pointer text-lg font-semibold text-slate-700">Advanced</summary>',
-      '<div class="mt-4 space-y-4">',
-      renderDetectedStack(status),
-      StatusSection({ status }),
-      `<div id="doctor-section">${DoctorSection({ doctor: doctorReport, loading })}</div>`,
-      hasJobs
-        ? `<details class="rounded-xl bg-slate-50 p-4 border border-slate-200"><summary class="cursor-pointer text-base font-semibold">Execution Queue (${operations.length})</summary><div class="mt-3">${ExecutionQueueSection({ operations })}</div></details>`
-        : "",
-      '<section class="rounded-xl bg-white/75 p-4 shadow-sm border border-slate-200/70">',
-      '<h2 class="text-lg font-semibold mb-3">Output</h2>',
-      `<pre id="outputPanel" class="bg-slate-950 text-slate-100 rounded-md p-2 text-xs overflow-auto max-h-72">${escapeHtml(output)}</pre>`,
-      "</section>",
-      AutoModeSection({ loading }),
-      '<div class="grid gap-4 md:grid-cols-2">',
-      MacrosSection({ loading, macros: availableMacros }),
-      QuickActionsSection({ loading, capabilities }),
-      "</div>",
-      '<div class="grid gap-4 md:grid-cols-2">',
-      RepairSection({ status, loading, capabilities }),
-      EnvironmentSection({ status, loading, capabilities }),
-      "</div>",
-      '<div class="grid gap-4 md:grid-cols-2">',
-      ChatImportSection({ loading, chatText, parsedActions: chatActions, emptyMessage: chatEmptyMessage }),
-      InstructionSection({ instruction, loading }),
-      "</div>",
-      DeploymentSection({ loading, capabilities }),
-      "</div>",
-      "</details>",
-      "</div>",
-    ].join("");
+        status,
+        hasJobs,
+        operations,
+        output,
+        loading,
+        availableMacros,
+        capabilities,
+        chatText,
+        chatActions,
+        chatEmptyMessage,
+        instruction,
+      });
+    }
+    if (makerScreen === "first-version") {
+      return renderFirstVersionScreen({
+        status,
+        executionPlan,
+        launchState,
+        doctorReport,
+        appliedChangeRequest: lastAppliedChangeRequest,
+      });
+    }
+    if (makerScreen === "request-changes") {
+      return renderChangeRequestScreen({ validationMessage: changeRequestValidation });
+    }
+    if (makerScreen === "updating-draft") {
+      return renderUpdatingDraftScreen({ requestSummary: lastSubmittedChangeRequest });
+    }
+    return renderMakerDashboard({
+      loading,
+      executionPlan,
+      status,
+      launchState,
+      launchProgress,
+      launchStepStates,
+      doctorReport,
+      activityLog,
+      makerStarted,
+    });
   }, [
     status,
     launchState,
@@ -2146,6 +2679,13 @@ function markAction(label, outcome, details) {
     launchProgress,
     launchStepStates,
     expandedTimelineIds,
+    expertMode,
+    makerStarted,
+    makerScreen,
+    changeRequestBackScreen,
+    changeRequestValidation,
+    lastSubmittedChangeRequest,
+    lastAppliedChangeRequest,
   ]);
 
   return React.createElement("div", { dangerouslySetInnerHTML: { __html: html } });
