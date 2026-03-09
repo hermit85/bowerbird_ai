@@ -669,8 +669,8 @@ function renderOnboardingScreen(status, localProjectDetectedOverride = null) {
   return `
     <div class="max-w-2xl mx-auto space-y-6">
       <div class="text-center space-y-2 pt-4">
-        <h1 class="text-2xl font-semibold text-slate-900">Where is your project?</h1>
-        <p class="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">Choose how Deplo should start.</p>
+        <h1 class="text-2xl font-semibold text-slate-900">Let Deplo inspect your app</h1>
+        <p class="text-sm text-slate-600 max-w-xl mx-auto leading-relaxed">Choose a project source so Deplo can check what is blocking launch, surface one clear next step, and guide the fix-to-live path.</p>
       </div>
 
       <div class="space-y-3">
@@ -679,16 +679,17 @@ function renderOnboardingScreen(status, localProjectDetectedOverride = null) {
             <div class="flex-shrink-0 mt-0.5 h-10 w-10 rounded-xl ${localProjectDetected ? "bg-white border border-emerald-200 text-emerald-700" : "bg-white border border-slate-200 text-slate-400"} flex items-center justify-center text-lg">→</div>
             <div class="min-w-0">
               <div class="flex items-center gap-2">
-                <div class="text-base font-semibold ${localProjectDetected ? "text-slate-900 group-hover:text-emerald-800" : "text-slate-700"} transition">Use current folder</div>
+                <div class="text-base font-semibold ${localProjectDetected ? "text-slate-900 group-hover:text-emerald-800" : "text-slate-700"} transition">Use this project</div>
                 ${localProjectDetected ? '<span class="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">Detected here</span>' : ""}
               </div>
               <p class="mt-1 text-sm ${localProjectDetected ? "text-slate-600" : "text-slate-500"} leading-relaxed">
                 ${localProjectDetected
-      ? (showProjectName ? `${escapeHtml(projectName)} is ready.` : "Project detected in this folder.")
+      ? (showProjectName ? `${escapeHtml(projectName)} is ready for inspection.` : "Project detected in this folder.")
       : "No local project detected yet."}
               </p>
+              <p class="mt-1 text-xs ${localProjectDetected ? "text-slate-500" : "text-slate-400"}">After this: Deplo inspects your project and shows the main blocker, if any.</p>
               <div class="mt-3">
-                <button id="startScanBtn" ${localProjectDetected ? "" : "disabled"} class="rounded-full ${localProjectDetected ? "bg-emerald-700 text-white hover:bg-emerald-800" : "border border-slate-300 bg-white text-slate-400 cursor-not-allowed"} px-4 py-2 text-xs font-semibold transition">Use current folder</button>
+                <button id="startScanBtn" ${localProjectDetected ? "" : "disabled"} class="rounded-full ${localProjectDetected ? "bg-emerald-700 text-white hover:bg-emerald-800" : "border border-slate-300 bg-white text-slate-400 cursor-not-allowed"} px-4 py-2 text-xs font-semibold transition">Inspect this project</button>
               </div>
             </div>
           </div>
@@ -701,9 +702,10 @@ function renderOnboardingScreen(status, localProjectDetectedOverride = null) {
             </div>
             <div class="min-w-0">
               <div class="text-base font-semibold text-slate-900 group-hover:text-slate-700 transition">Import from GitHub</div>
-              <p class="mt-1 text-sm text-slate-500 leading-relaxed">Paste a repo URL to continue.</p>
+              <p class="mt-1 text-sm text-slate-500 leading-relaxed">Connect your GitHub project so Deplo can map likely blockers and guide the next operator step.</p>
+              <p class="mt-1 text-xs text-slate-400">After this: Deplo checks what can be verified now and what still needs direct project access.</p>
               <div class="mt-3">
-                <button id="startGithubBtn" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">Import from GitHub</button>
+                <button id="startGithubBtn" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">Connect GitHub source</button>
               </div>
             </div>
           </div>
@@ -714,7 +716,8 @@ function renderOnboardingScreen(status, localProjectDetectedOverride = null) {
             <div class="flex-shrink-0 mt-0.5 h-10 w-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 text-lg">◇</div>
             <div class="min-w-0">
               <div class="text-base font-semibold text-slate-900 group-hover:text-slate-700 transition">Try a sample project</div>
-              <p class="mt-1 text-sm text-slate-500 leading-relaxed">See a simulated Deplo flow.</p>
+              <p class="mt-1 text-sm text-slate-500 leading-relaxed">See Deplo’s inspect → fix → deploy operator loop in a safe simulation.</p>
+              <p class="mt-1 text-xs text-slate-400">After this: You get a guided walkthrough without changing a real project.</p>
               <div class="mt-3">
                 <button id="startSampleBtn" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">Try a sample project</button>
               </div>
@@ -738,6 +741,35 @@ function diagnosisCheckRowClass(status) {
   if (status === "warn") return "border-amber-100 bg-amber-50/50";
   if (status === "blocker") return "border-rose-100 bg-rose-50/50";
   return "border-slate-100 bg-slate-50/50";
+}
+
+function resolveImportStateSummary({ hasConnectedRepo, phase }) {
+  const normalizedPhase = String(phase || "idle");
+  if (!hasConnectedRepo) {
+    return {
+      checkingLine: "Deplo is waiting for your repository source.",
+      blockerLine: "Blocker: project URL is still missing.",
+      nextLine: "Next: paste your GitHub URL so Deplo can inspect project context.",
+      verificationLine: "Verification: no project context available yet.",
+      primaryLabel: "Check imported repo",
+    };
+  }
+  if (normalizedPhase === "importing" || normalizedPhase === "checking") {
+    return {
+      checkingLine: "Deplo is checking what can be confirmed from the connected repo.",
+      blockerLine: "Blocker: Deplo still needs direct project access for full runtime verification.",
+      nextLine: "Next: let Deplo inspect this project directly.",
+      verificationLine: "Verification: repo connection confirmed; runtime and live checks still pending.",
+      primaryLabel: "Check this project",
+    };
+  }
+  return {
+    checkingLine: "Deplo has repo context and is ready to continue the operator flow.",
+    blockerLine: "Blocker: full deploy/runtime truth is not yet proven from GitHub source alone.",
+    nextLine: "Next: run direct project inspection to unblock fix and verification runs.",
+    verificationLine: "Verification: source connected; deeper checks require local access.",
+    primaryLabel: "Check this project",
+  };
 }
 
 function resolveDiagnosisCopyFromProof({
@@ -1357,6 +1389,12 @@ function renderMissingInputFlow({ actions, recoveryUnits = null, loading, expand
           const missing = item.missingInput || {};
           const captureAction = item.captureAction || missing.captureAction || item.primaryAction;
           const continueAction = item.continueAction || missing.continueAction || item.secondaryAction;
+          const hasPrimaryCapture = Boolean(captureAction?.id);
+          const showContinueAction = Boolean(
+            continueAction?.id
+            && continueAction.id !== captureAction?.id
+            && !hasPrimaryCapture,
+          );
           const captureBusy = Boolean(captureAction?.id && loading?.[captureAction.id]);
           const continueBusy = Boolean(continueAction?.id && loading?.[continueAction.id]);
           const verificationState = String(item.verificationState || missing.verificationState || item.state || "needs_input");
@@ -1420,7 +1458,7 @@ function renderMissingInputFlow({ actions, recoveryUnits = null, loading, expand
               ${expanded && item.detail ? `<p class="text-xs text-slate-500">${escapeHtml(String(item.detail))}</p>` : ""}
               <div class="flex flex-wrap gap-2">
                 ${captureAction?.id ? `<button id="${escapeHtml(captureAction.id)}" ${captureBusy ? "disabled" : ""} class="rounded-full bg-emerald-700 text-white px-3.5 py-2 text-xs font-semibold hover:bg-emerald-800 transition ${captureBusy ? "opacity-60 cursor-not-allowed" : ""}">${captureBusy ? "Working…" : escapeHtml(String(captureOperator.primaryLabel || captureAction.label || "Resolve this step"))}</button>` : ""}
-                ${continueAction?.id ? `<button id="${escapeHtml(continueAction.id)}" ${continueBusy ? "disabled" : ""} class="rounded-full border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition ${continueBusy ? "opacity-60 cursor-not-allowed" : ""}">${continueBusy ? "Working…" : escapeHtml(String(continueOperator.primaryLabel || continueAction.label || "Continue after input"))}</button>` : ""}
+                ${showContinueAction ? `<button id="${escapeHtml(continueAction.id)}" ${continueBusy ? "disabled" : ""} class="rounded-full border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition ${continueBusy ? "opacity-60 cursor-not-allowed" : ""}">${continueBusy ? "Working…" : escapeHtml(String(continueOperator.primaryLabel || continueAction.label || "Continue after input"))}</button>` : ""}
               </div>
             </article>
           `;
@@ -2574,6 +2612,13 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
       primaryRecheckAction: { id: "reviewMissingBtn", label: "Go to recovery step" },
     };
   })();
+  const compactVerification = renderCompactVerificationSummary({
+    evidenceUnits: verificationEvidence,
+    loading,
+    primaryAction: topRecoveryAction?.id
+      ? null
+      : (watchModeForRender?.primaryRecheckAction || liveHealth?.nextAction || null),
+  });
 
   const contextPills = [
     branch ? `<span class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">${escapeHtml(branch)}</span>` : "",
@@ -2637,9 +2682,13 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
     } else {
       primaryCta = `<button id="deployNowBtn" ${deployBusy ? "disabled" : ""} class="rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold hover:bg-emerald-800 transition ${deployBusy ? "opacity-60 cursor-not-allowed" : ""}">${deployBusy ? "Deploying…" : "Deploy now"}</button>`;
     }
+    const isLiveNeedsInput = proof?.variant === "live_needs_input";
     secondaryActions = Array.isArray(proof?.secondaryActions)
       ? proof.secondaryActions
-          .filter((action) => action && action.id && action.id !== heroPrimaryAction?.id)
+          .filter((action) => action
+            && action.id
+            && action.id !== heroPrimaryAction?.id
+            && (!isLiveNeedsInput || !String(action.id).startsWith("requestChanges")))
           .map((action) => renderProofActionButton(action, false))
           .join("")
       : "";
@@ -2694,7 +2743,7 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
           return `
             ${executionCenter}
             ${missingInputFlow}
-            ${renderVerificationEvidenceSection({ evidenceUnits: verificationEvidence, loading })}
+            ${compactVerification}
           `;
         }
         // Pre-deploy / preview states: lean composition.
@@ -2706,7 +2755,7 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
         return `
           ${executionCenter}
           ${missingInputFlow}
-          ${renderVerificationEvidenceSection({ evidenceUnits: verificationEvidence, loading })}
+          ${renderVerificationEvidenceSection({ evidenceUnits: verificationEvidence, loading, compact: true })}
           ${detailSections ? `
             <details class="rounded-xl border border-slate-200 bg-white">
               <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700 hover:text-slate-900 transition">More operational detail</summary>
@@ -2723,7 +2772,7 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
         // For live apps: Hero covers status, Missing Input covers action, Watch Mode covers monitoring.
         // Live Health is redundant — suppress it and show only Watch Mode.
         if (isLiveVariant) {
-          return renderWatchModeSection({ watch: watchModeForRender, loading });
+          return renderWatchModeSection({ watch: watchModeForRender, loading, compact: true });
         }
         // For pre-deploy states: show both Live Health and Watch Mode
         return `
@@ -2753,38 +2802,17 @@ function renderGithubImportState({ projectSource, loading, status = null, inputT
   const phase = String(projectSource?.phase || "idle");
   const repoLabel = String(projectSource?.repoFullName || "").trim();
   const repoUrl = String(projectSource?.repoUrl || "").trim();
-  const statusLine = phase === "importing"
-    ? "Connecting your GitHub project and preparing project context."
-    : phase === "checking"
-      ? "Checking what Deplo can verify from GitHub in this session."
-      : phase === "limited"
-        ? "GitHub project connected. Full deploy diagnosis is not confirmed from GitHub alone."
-        : "Connect a GitHub repo to start this project workspace.";
   const connectedLine = repoLabel
     ? `${repoLabel}${repoUrl ? ` · ${repoUrl}` : ""}`
     : "No repository URL captured yet.";
   const hasConnectedRepo = Boolean(repoUrl || repoLabel);
-  const capabilityLine = hasConnectedRepo
-    ? "GitHub connection is saved in this session."
-    : "Deplo is waiting for your GitHub repo URL.";
-  const limitationLine = hasConnectedRepo
-    ? "Deplo still needs local access to fully verify build setup, environment requirements, and deploy readiness."
-    : "No connected repository yet.";
-  const whatDeploCanDoLine = hasConnectedRepo
-    ? "Deplo can carry this repo context forward, guide local diagnosis, and verify results after each step."
-    : "Deplo can connect your repository and prepare a guided diagnosis path.";
-  const whatYouNeedLine = hasConnectedRepo
-    ? "Check local project for full diagnosis."
-    : "Paste your GitHub URL to connect this project.";
-  const payoffLine = hasConnectedRepo
-    ? "After this, Deplo can confirm what blocks launch and give you one clear next action."
-    : "After this, Deplo can start a guided project check.";
+  const importSummary = resolveImportStateSummary({ hasConnectedRepo, phase });
   const heroHeadline = hasConnectedRepo
     ? "Your GitHub project is connected"
     : "Connect your GitHub project";
   const heroSummary = hasConnectedRepo
-    ? "Connection worked. Deplo still needs local access for a full run-readiness diagnosis."
-    : "Start by connecting a repository source.";
+    ? "Deplo captured repository context and is ready to continue from the main blocker."
+    : "Start with a repository source so Deplo can inspect and guide the next step.";
   const inspectionFindings = getInspectionFindings(status);
   const githubProof = {
     variant: "no_proof_yet",
@@ -2852,17 +2880,26 @@ function renderGithubImportState({ projectSource, loading, status = null, inputT
     makerScreen: "githubImport",
     projectSource,
   });
-  const githubRail = renderNextActionRail({ actions: githubActions, loading });
   const githubExecutionCenter = renderOperationExecutionCenter({ actions: githubActions, loading, activityLog, resultBanner });
   const githubMissingInputFlow = renderMissingInputFlow({ actions: githubActions, recoveryUnits: githubRecoveryUnits, loading, expanded: true });
+  const topMissingInputAction = Array.isArray(githubRecoveryUnits)
+    ? githubRecoveryUnits.find((unit) => unit?.captureAction?.id)?.captureAction
+    : null;
+  const primaryRouteAction = topMissingInputAction?.id
+    ? { id: "reviewMissingBtn", label: "Review recovery step" }
+    : (hasConnectedRepo
+      ? { id: "startScanBtn", label: importSummary.primaryLabel }
+      : null);
   const githubIssueGroups = renderFounderIssueGroups({ issues: githubIssues, loading });
   const inspectionSummary = renderInspectionFindingsSummary(status, "github");
+  const githubRail = renderNextActionRail({ actions: githubActions, loading });
+  const githubContinuity = renderOperatorSessionContinuity({ continuity: githubSessionContinuity, loading, compact: true });
   return `
     <div class="rounded-2xl border border-slate-300/75 bg-white p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)] space-y-4">
       <section class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/60 px-4 py-4">
         <div class="flex flex-wrap items-center gap-2">
           <span class="inline-flex items-center rounded-full bg-sky-100 text-sky-800 px-2.5 py-1 text-xs font-semibold">
-            ${hasConnectedRepo ? "Repo connected" : "Awaiting repo URL"}
+            ${hasConnectedRepo ? "Source connected" : "Awaiting project URL"}
           </span>
           <span class="inline-flex items-center rounded-full bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1 text-xs font-semibold">
             Recommended next
@@ -2870,47 +2907,45 @@ function renderGithubImportState({ projectSource, loading, status = null, inputT
         </div>
         <h2 class="mt-3 text-xl font-semibold text-slate-900">${escapeHtml(heroHeadline)}</h2>
         <p class="mt-1 text-sm text-slate-700">${escapeHtml(heroSummary)}</p>
-        ${hasConnectedRepo ? `<div class="mt-3 text-xs text-slate-500">Deplo saved this source and can continue from here.</div>` : ""}
+        <div class="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+          <p>${escapeHtml(importSummary.checkingLine)}</p>
+          <p class="mt-1 text-amber-800">${escapeHtml(importSummary.blockerLine)}</p>
+          <p class="mt-1 text-xs text-slate-500">${escapeHtml(importSummary.nextLine)}</p>
+        </div>
         <div class="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-          <span>${escapeHtml(capabilityLine)}</span>
+          <span>${escapeHtml(importSummary.verificationLine)}</span>
           <span>•</span>
           <span class="break-all">${escapeHtml(connectedLine)}</span>
         </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          ${primaryRouteAction?.id ? `<button id="${escapeHtml(primaryRouteAction.id)}" class="rounded-full bg-emerald-700 text-white px-4 py-2 text-sm font-semibold hover:bg-emerald-800 transition">${escapeHtml(primaryRouteAction.label)}</button>` : ""}
+          ${hasConnectedRepo ? '<button id="startGithubBtn" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition">Change repository</button>' : ""}
+        </div>
       </section>
-
-      ${renderOperatorSessionContinuity({ continuity: githubSessionContinuity, loading, compact: true })}
-
-      ${githubRail}
 
       ${githubExecutionCenter}
 
-      ${inspectionSummary}
-
       ${githubMissingInputFlow}
-
-      ${githubIssueGroups}
 
       ${renderVerificationEvidenceSection({ evidenceUnits: githubVerificationEvidence, loading, compact: true })}
 
-      <section class="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 space-y-3">
-        <div>
-          <div class="text-[11px] uppercase tracking-[0.12em] font-semibold text-slate-500">Next step</div>
-          <p class="mt-1 text-sm text-slate-700">${escapeHtml(whatYouNeedLine)}</p>
-          <p class="mt-1 text-xs text-slate-500">${escapeHtml(payoffLine)}</p>
+      ${!hasConnectedRepo
+        ? `<section class="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 space-y-2">
+            <div class="text-[11px] uppercase tracking-[0.12em] font-semibold text-slate-500">Connect repository</div>
+            <p class="text-sm text-slate-700">Paste your repo URL and Deplo will inspect what can be verified immediately.</p>
+            ${renderCommandInput({ loading, text: inputText, buttonLabel: "Check imported repo" })}
+          </section>`
+        : ""}
+
+      <details class="rounded-xl border border-slate-200 bg-white">
+        <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700 hover:text-slate-900 transition">More operational detail</summary>
+        <div class="px-4 pb-4 space-y-3">
+          ${githubContinuity}
+          ${inspectionSummary}
+          ${githubRail}
+          ${githubIssueGroups}
         </div>
-        ${hasConnectedRepo
-          ? `<div class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 break-all">
-              <span class="font-medium text-slate-700">Connected repo:</span> ${escapeHtml(repoUrl || repoLabel)}
-            </div>`
-          : `<div>
-              <div class="text-[11px] uppercase tracking-[0.12em] font-semibold text-slate-500">Import / connect</div>
-              <p class="mt-1 text-sm text-slate-700">Paste your repo URL, then continue.</p>
-              <div class="mt-2">${renderCommandInput({ loading, text: inputText, buttonLabel: "Check imported repo" })}</div>
-              <div class="mt-2 text-xs text-slate-500">Use a URL like: https://github.com/owner/repo</div>
-            </div>`
-        }
-        <p class="text-xs text-slate-500">${escapeHtml(whatDeploCanDoLine)} · ${escapeHtml(statusLine)} · Use New project to switch source.</p>
-      </section>
+      </details>
     </div>
   `;
 }
@@ -2923,7 +2958,7 @@ function renderLocalInspectionState({ status }) {
     <div class="rounded-2xl border border-slate-300/75 bg-white p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)] space-y-4">
       <div>
         <h2 class="text-xl font-semibold text-slate-900">Inspecting your project</h2>
-        <p class="mt-1 text-sm text-slate-600">Source: local folder · ${escapeHtml(label)}</p>
+        <p class="mt-1 text-sm text-slate-600">Source: this project · ${escapeHtml(label)}</p>
       </div>
       <div class="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 space-y-2 text-sm text-slate-700">
         <div class="flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-sky-500 animate-pulse"></span>Checking project structure</div>
@@ -3431,23 +3466,30 @@ function renderWatchModeSection({ watch, loading = {}, compact = false }) {
       <div class="flex flex-wrap items-center gap-2">
         <span class="text-[11px] uppercase tracking-[0.12em] font-semibold text-slate-500">Keep working / Watch mode</span>
         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${stateTone}">${escapeHtml(stateLabel)}</span>
-        <span class="inline-flex items-center rounded-full bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 text-[11px] font-medium">${escapeHtml(String(watch.confidenceLabel || "Low confidence"))}</span>
+        ${!compact ? `<span class="inline-flex items-center rounded-full bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 text-[11px] font-medium">${escapeHtml(String(watch.confidenceLabel || "Low confidence"))}</span>` : ""}
       </div>
+      ${compact
+        ? `
+      <p class="text-xs text-slate-600">${escapeHtml(String(watch.whatChanged || watch.stalenessLabel || watch.confidenceLine || "No watch updates yet."))}</p>
+      <p class="text-xs text-slate-500">${escapeHtml(String(watch.nextWatchStep || "Deplo can re-check confidence on request."))}</p>
+      `
+        : `
       <p class="text-sm text-slate-800"><span class="font-medium">Last known good:</span> ${escapeHtml(String(watch.lastKnownGood || "Not verified yet."))}</p>
       <p class="text-xs text-slate-600">${escapeHtml(String(watch.confidenceLine || watch.stalenessLabel || "Not checked yet"))}</p>
-      ${!compact ? `<div class="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2">
+      <div class="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2">
         <div class="text-xs font-semibold text-slate-700">What Deplo is watching</div>
         <ul class="mt-1 space-y-1 text-xs text-slate-600">
           ${(Array.isArray(watch.watchTargets) ? watch.watchTargets : []).slice(0, 3).map((target) => `<li>• ${escapeHtml(String(target.label || "Watch target"))}: ${escapeHtml(String(target.summary || ""))}</li>`).join("")}
         </ul>
-      </div>` : ""}
+      </div>
       ${watch.whatChanged ? `<p class="text-xs text-slate-600">What changed: ${escapeHtml(String(watch.whatChanged))}</p>` : ""}
       <p class="text-xs text-slate-500">${escapeHtml(String(watch.nextWatchStep || ""))}</p>
+      `}
       <div class="flex flex-wrap gap-2">
         ${primary?.id ? `<button id="${escapeHtml(primary.id)}" ${primaryBusy ? "disabled" : ""} class="rounded-full bg-emerald-700 text-white px-3.5 py-2 text-xs font-semibold hover:bg-emerald-800 transition ${primaryBusy ? "opacity-60 cursor-not-allowed" : ""}">${primaryBusy ? "Working…" : escapeHtml(String(primary.label || "Check app health again"))}</button>` : ""}
-        ${secondary?.id ? `<button id="${escapeHtml(secondary.id)}" ${secondaryBusy ? "disabled" : ""} class="rounded-full border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition ${secondaryBusy ? "opacity-60 cursor-not-allowed" : ""}">${secondaryBusy ? "Working…" : escapeHtml(String(secondary.label || "Secondary action"))}</button>` : ""}
+        ${secondary?.id && !compact ? `<button id="${escapeHtml(secondary.id)}" ${secondaryBusy ? "disabled" : ""} class="rounded-full border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition ${secondaryBusy ? "opacity-60 cursor-not-allowed" : ""}">${secondaryBusy ? "Working…" : escapeHtml(String(secondary.label || "Secondary action"))}</button>` : ""}
       </div>
-      <p class="text-[11px] text-slate-500">${escapeHtml(String(watch.onDemandOnlyLabel || "Checks run on request."))}</p>
+      ${!compact ? `<p class="text-[11px] text-slate-500">${escapeHtml(String(watch.onDemandOnlyLabel || "Checks run on request."))}</p>` : ""}
     </section>
   `;
 }
@@ -3860,6 +3902,37 @@ function resolveFounderEvidenceGroups(evidenceUnits) {
   });
 }
 
+function renderCompactVerificationSummary({ evidenceUnits, loading = {}, primaryAction = null }) {
+  const groups = resolveFounderEvidenceGroups(evidenceUnits);
+  if (!Array.isArray(groups) || groups.length === 0) return "";
+  const verified = groups.filter((group) => String(group?.status || "") === "verified");
+  const pending = groups.filter((group) => String(group?.status || "") !== "verified");
+  const confidenceRank = { low: 1, medium: 2, high: 3 };
+  const topConfidence = groups.reduce((acc, group) => {
+    const level = String(group?.confidenceLevel || "low");
+    return Math.max(acc, confidenceRank[level] || 1);
+  }, 1);
+  const confidenceLabel = topConfidence >= 3 ? "High confidence" : topConfidence === 2 ? "Medium confidence" : "Low confidence";
+  const primaryBusy = Boolean(primaryAction?.id && loading?.[primaryAction.id]);
+  return `
+    <section class="rounded-xl border border-slate-200 bg-white px-4 py-3 space-y-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="text-[11px] uppercase tracking-[0.12em] font-semibold text-slate-500">Confidence summary</div>
+        <span class="inline-flex items-center rounded-full bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 text-[11px] font-medium">${escapeHtml(confidenceLabel)}</span>
+      </div>
+      <p class="text-sm text-slate-800"><span class="font-medium">Working now:</span> ${escapeHtml(verified.length > 0 ? verified.map((group) => String(group?.label || "")).join(", ") : "No scope fully verified yet.")}</p>
+      <p class="text-xs text-slate-600"><span class="font-medium">Still unverified:</span> ${escapeHtml(pending.length > 0 ? pending.map((group) => String(group?.label || "")).join(", ") : "No remaining verification gaps.")}</p>
+      <details class="rounded-md border border-slate-200 bg-slate-50/70 px-2.5 py-2">
+        <summary class="cursor-pointer text-[11px] font-medium text-slate-600">Verification details</summary>
+        <ul class="mt-1.5 space-y-1 text-xs text-slate-600">
+          ${groups.map((group) => `<li>• ${escapeHtml(String(group?.label || "Scope"))}: ${escapeHtml(String(group?.evidenceSummary || ""))}</li>`).join("")}
+        </ul>
+      </details>
+      ${primaryAction?.id ? `<button id="${escapeHtml(primaryAction.id)}" ${primaryBusy ? "disabled" : ""} class="rounded-full border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition ${primaryBusy ? "opacity-60 cursor-not-allowed" : ""}">${primaryBusy ? "Working…" : escapeHtml(String(primaryAction.label || "Verify with Deplo"))}</button>` : ""}
+    </section>
+  `;
+}
+
 function renderVerificationEvidenceSection({ evidenceUnits, loading = {}, compact = false }) {
   const groups = resolveFounderEvidenceGroups(evidenceUnits);
   if (groups.length === 0) return "";
@@ -3965,7 +4038,7 @@ function renderMakerOrientationLayer({
     ? String(projectSource?.repoFullName || "").trim() || "GitHub repository"
     : sourceMode === "sample"
       ? "Sample project"
-      : (showProjectName ? projectName : "Current folder");
+      : (showProjectName ? projectName : "Current project");
   const statusLead = sourceMode === "github" ? "repo connected" : state;
   const lastActivity = Array.isArray(activityLog) && activityLog.length > 0 ? activityLog[0] : null;
   const recentUpdate = String(lastActivity?.message || resultBanner?.message || "").trim();
@@ -3979,7 +4052,7 @@ function renderMakerOrientationLayer({
             <span class="font-semibold uppercase tracking-[0.12em] text-slate-500">Context</span>
             <span class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-700">${escapeHtml(statusLead)}</span>
             <span class="text-slate-300">•</span>
-            <span class="text-slate-600">Source: ${escapeHtml(sourceMode === "none" ? "not selected" : sourceMode)}</span>
+            <span class="text-slate-600">Source: ${escapeHtml(sourceMode === "none" ? "not selected" : sourceMode === "local" ? "this project" : sourceMode)}</span>
             <span class="text-slate-300">•</span>
             <span class="text-slate-600">Project: ${escapeHtml(sourceName)}</span>
           </div>
@@ -4059,40 +4132,58 @@ function renderFixNextFlow({ doctorReport, loading, showDetails = false, fixProg
     makerScreen: "fixFlow",
     projectSource,
   });
-  const actionRail = renderNextActionRail({ actions: actionUnits, loading });
   const executionCenter = renderOperationExecutionCenter({ actions: actionUnits, loading, activityLog, resultBanner });
-  const missingInputFlow = renderMissingInputFlow({ actions: actionUnits, recoveryUnits: fixRecoveryUnits, loading, expanded: showDetails });
+  const topFixRecoveryUnit = Array.isArray(fixRecoveryUnits)
+    ? fixRecoveryUnits.find((unit) => unit?.captureAction?.id && String(unit?.severity || "") !== "optional")
+      || fixRecoveryUnits.find((unit) => unit?.captureAction?.id)
+      || null
+    : null;
+  const blockerTruth = String(topFixRecoveryUnit?.title || blocker || "One setup detail still needs your input.");
+  const blockerWhy = String(topFixRecoveryUnit?.blockedUntil || "").trim();
+  const missingInputFlow = renderMissingInputFlow({
+    actions: actionUnits,
+    recoveryUnits: topFixRecoveryUnit ? [topFixRecoveryUnit] : fixRecoveryUnits,
+    loading,
+    expanded: false,
+  });
+  const compactConfidence = renderCompactVerificationSummary({
+    evidenceUnits: verificationEvidence,
+    loading,
+    primaryAction: null,
+  });
+  const detailSections = [
+    renderOperatorSessionContinuity({ continuity: fixSessionContinuity, loading, compact: true }),
+    renderVerificationEvidenceSection({ evidenceUnits: verificationEvidence, loading, compact: true }),
+    renderNextActionRail({ actions: actionUnits, loading }),
+    renderFounderIssueGroups({
+      issues: resolveFounderIssuesModel({
+        proof: proof || { hasBlockingInput: true, hasProof: false },
+        doctorReport,
+        projectSource,
+        loading,
+        makerScreen: "fixFlow",
+        inspectionFindings: getInspectionFindings(status),
+        fixProgressStep,
+        resultBanner,
+        activityLog,
+        verificationEvidenceUnits: verificationEvidence,
+      }),
+      loading,
+    }),
+  ].filter((section) => String(section || "").trim().length > 0).join("");
+  const showLegacyDetails = showDetails || manualActions.length > 0 || issues.length > 0;
   return `
     <div class="max-w-3xl mx-auto p-4 space-y-4" id="appBody">
       <section class="rounded-2xl border border-slate-300/75 bg-white p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)] space-y-4">
         <div class="text-xs uppercase tracking-[0.14em] text-slate-400">Fix this next</div>
         <div class="text-xs text-slate-500">${escapeHtml(stageLabel)}</div>
-        <h2 class="text-xl font-semibold text-slate-900">We'll fix the blocker and get you closer to live</h2>
-        <p class="text-sm text-slate-600">${escapeHtml(blocker)}</p>
-        ${actionRail}
+        <h2 class="text-xl font-semibold text-slate-900">One blocker is holding this run</h2>
+        <p class="text-sm text-slate-700">${escapeHtml(blockerTruth)}</p>
+        ${blockerWhy ? `<p class="text-xs text-slate-500">${escapeHtml(blockerWhy)}</p>` : ""}
         ${executionCenter}
-        ${renderOperatorSessionContinuity({ continuity: fixSessionContinuity, loading, compact: true })}
         ${missingInputFlow}
-        ${renderVerificationEvidenceSection({ evidenceUnits: verificationEvidence, loading, compact: true })}
-        <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <div class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">What Deplo does automatically</div>
-          <ul class="mt-2 space-y-1 text-sm text-slate-700">
-            <li>• Runs safe setup fixes first</li>
-            <li>• Rechecks your project status</li>
-            <li>• Prepares redeploy when ready</li>
-          </ul>
-        </div>
-        <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <div class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">What still needs your input</div>
-          <p class="mt-1 text-sm text-slate-700">${manualActions.length > 0 ? "A setup detail may still need your input." : "No manual input is required yet."}</p>
-        </div>
-        <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <div class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">What success looks like</div>
-          <p class="mt-1 text-sm text-slate-700">${hasAutofix ? "Deplo applies the safe fix and updates your readiness." : "You'll see exactly what to provide next, then Deplo continues."}</p>
-        </div>
+        ${compactConfidence}
         <div class="flex flex-wrap gap-2">
-          <button id="runFixNowBtn" ${loading?.runFixNowBtn ? "disabled" : ""} class="rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold hover:bg-emerald-800 transition ${loading?.runFixNowBtn ? "opacity-60 cursor-not-allowed" : ""}">${loading?.runFixNowBtn ? "Applying safe fix…" : primaryLabel}</button>
-          <button id="reviewMissingBtn" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition">Review what's missing</button>
           <button id="cancelFixNextBtn" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition">Back</button>
         </div>
         ${showProgress
@@ -4111,8 +4202,12 @@ function renderFixNextFlow({ doctorReport, loading, showDetails = false, fixProg
               <p class="mt-2 text-xs text-slate-500">Deplo is applying safe fixes and preparing redeploy.</p>
             </div>`
           : ""}
-        ${showDetails
-          ? `<div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2">
+        ${showLegacyDetails
+          ? `<details class="rounded-xl border border-slate-200 bg-white">
+              <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700 hover:text-slate-900 transition">More operational detail</summary>
+              <div class="px-4 pb-4 space-y-3">
+                ${detailSections}
+                ${showDetails ? `<div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2">
               <div class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">What's missing right now</div>
               ${issues.length > 0
                 ? `<ul class="space-y-1 text-sm text-slate-700">${issues.slice(0, 3).map((issue) => `<li>• ${escapeHtml(normalizeFounderBlockerText(String(issue?.message || "")))}</li>`).join("")}</ul>`
@@ -4123,7 +4218,9 @@ function renderFixNextFlow({ doctorReport, loading, showDetails = false, fixProg
                     <ul class="mt-1 space-y-1 text-sm text-slate-700">${manualActions.slice(0, 2).map((action) => `<li>• ${escapeHtml(String(action?.description || action?.label || "Manual setup input needed."))}</li>`).join("")}</ul>
                   </div>`
                 : ""}
-            </div>`
+            </div>` : ""}
+              </div>
+            </details>`
           : ""}
       </section>
     </div>
@@ -4337,7 +4434,7 @@ function renderConsoleShell({ status, expertMode, makerStarted, launchState, mak
       ? "Sample demo"
       : (showProjectName ? projectName : "");
   const inSourceSelection = !hasChosenProjectSource || makerScreen === "sourceSelection";
-  const showStartOver = !expertMode && !inSourceSelection && (makerStarted || makerScreen !== "localDiagnosis");
+  const showStartOver = !expertMode && !inSourceSelection;
   return `
     <header class="sticky top-0 z-40 border-b border-slate-200/80 bg-slate-50/95 backdrop-blur">
       <div class="max-w-6xl mx-auto px-4 py-3">
@@ -4350,7 +4447,6 @@ function renderConsoleShell({ status, expertMode, makerStarted, launchState, mak
       : `<span class="text-slate-300">/</span><button id="projectHomeBtn" class="truncate text-sm text-slate-600 hover:text-slate-800 transition">${escapeHtml(sourceName || sourceLabel)}</button><span class="rounded-full border border-slate-300/70 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600">${escapeHtml(sourceLabel)}</span>`}
           </div>
           <div class="flex items-center gap-2">
-            ${!inSourceSelection ? '<button id="startBtn" class="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition">New project</button>' : ""}
             ${showStartOver ? '<button id="startOverBtn" class="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition">New project</button>' : ""}
             <span class="rounded-full border border-slate-300/70 bg-white px-2.5 py-1 text-xs text-slate-700">${escapeHtml(inSourceSelection ? "Source selection" : stage)}</span>
             ${expertMode
