@@ -1593,7 +1593,7 @@ function renderOperationExecutionCenter({ actions, loading, activityLog = [], re
 
   return `
     <section class="rounded-xl border border-slate-200 bg-white px-4 py-3 space-y-3">
-      <div class="text-[11px] uppercase tracking-[0.12em] font-semibold text-slate-500">Operation execution center</div>
+      <div class="text-[11px] uppercase tracking-[0.12em] font-semibold text-slate-500">Current step</div>
       ${nowUnit ? `
         <article class="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-3 space-y-2">
           <div class="flex flex-wrap items-center gap-2">
@@ -2619,6 +2619,10 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
       ? null
       : (watchModeForRender?.primaryRecheckAction || liveHealth?.nextAction || null),
   });
+  const liveNeedsInputInlineMonitoring = `
+    <p class="text-xs text-slate-600">${escapeHtml(String(watchModeForRender?.confidenceLine || liveHealth?.recencyLabel || "Not checked yet"))}</p>
+    ${watchModeForRender?.whatChanged ? `<p class="text-xs text-slate-500">Monitoring: ${escapeHtml(String(watchModeForRender.whatChanged))}</p>` : ""}
+  `;
 
   const contextPills = [
     branch ? `<span class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">${escapeHtml(branch)}</span>` : "",
@@ -2737,9 +2741,16 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
       </section>
 
       ${(() => {
-        const isLiveVariant = proof?.variant === "live_needs_input" || proof?.variant === "live_stable";
-        if (isLiveVariant) {
-          // Live apps: keep a focused stack with explicit inline execution feedback.
+        const isLiveNeedsInput = proof?.variant === "live_needs_input";
+        const isLiveStable = proof?.variant === "live_stable";
+        if (isLiveNeedsInput) {
+          // One blocker -> one compact action block.
+          return `
+            ${missingInputFlow}
+            ${liveNeedsInputInlineMonitoring}
+          `;
+        }
+        if (isLiveStable) {
           return `
             ${executionCenter}
             ${missingInputFlow}
@@ -2768,10 +2779,14 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
       })()}
 
       ${(() => {
-        const isLiveVariant = proof?.variant === "live_needs_input" || proof?.variant === "live_stable";
-        // For live apps: Hero covers status, Missing Input covers action, Watch Mode covers monitoring.
-        // Live Health is redundant — suppress it and show only Watch Mode.
-        if (isLiveVariant) {
+        const isLiveNeedsInput = proof?.variant === "live_needs_input";
+        const isLiveStable = proof?.variant === "live_stable";
+        // For live_needs_input, monitoring is folded inline above to keep one-screen, one-action focus.
+        if (isLiveNeedsInput) {
+          return "";
+        }
+        // For live_stable, keep lightweight continuity.
+        if (isLiveStable) {
           return renderWatchModeSection({ watch: watchModeForRender, loading, compact: true });
         }
         // For pre-deploy states: show both Live Health and Watch Mode
@@ -3030,8 +3045,8 @@ function resolveDeployProofState({ projectSource, launchState, status, doctorRep
       badgeLabel: "Import in progress",
       badgeTone: "bg-sky-100 text-sky-800",
       founderMessage: "Repository source captured. Full inspection is still limited, but this project context is ready for the next guided step.",
-      primaryAction: { id: "aiAnalyzeBtn", label: "Check imported repo" },
-      secondaryActions: [{ id: "startScanBtn", label: "Use local project instead" }],
+      primaryAction: { id: "aiAnalyzeBtn", label: "Check imported project" },
+      secondaryActions: [{ id: "startScanBtn", label: "Use this project instead" }],
     };
   }
 
@@ -3043,7 +3058,7 @@ function resolveDeployProofState({ projectSource, launchState, status, doctorRep
       badgeTone: "bg-violet-100 text-violet-800",
       founderMessage: "This is a demo flow. Proof states here are simulated for walkthrough only.",
       primaryAction: { id: "runSampleFlowBtn", label: "Run sample flow" },
-      secondaryActions: [{ id: "startScanBtn", label: "Use local project instead" }],
+      secondaryActions: [{ id: "startScanBtn", label: "Use this project instead" }],
     };
   }
 
@@ -4140,6 +4155,12 @@ function renderFixNextFlow({ doctorReport, loading, showDetails = false, fixProg
     : null;
   const blockerTruth = String(topFixRecoveryUnit?.title || blocker || "One setup detail still needs your input.");
   const blockerWhy = String(topFixRecoveryUnit?.blockedUntil || "").trim();
+  const heroRecoveryAction = topFixRecoveryUnit?.captureAction?.id
+    ? topFixRecoveryUnit.captureAction
+    : (actionUnits.find((unit) => unit?.primaryAction?.id)?.primaryAction || (hasAutofix
+      ? { id: "runFixNowBtn", label: primaryLabel }
+      : { id: "reviewMissingBtn", label: "Review what's missing" }));
+  const heroRecoveryBusy = Boolean(heroRecoveryAction?.id && loading?.[heroRecoveryAction.id]);
   const missingInputFlow = renderMissingInputFlow({
     actions: actionUnits,
     recoveryUnits: topFixRecoveryUnit ? [topFixRecoveryUnit] : fixRecoveryUnits,
@@ -4180,12 +4201,13 @@ function renderFixNextFlow({ doctorReport, loading, showDetails = false, fixProg
         <h2 class="text-xl font-semibold text-slate-900">One blocker is holding this run</h2>
         <p class="text-sm text-slate-700">${escapeHtml(blockerTruth)}</p>
         ${blockerWhy ? `<p class="text-xs text-slate-500">${escapeHtml(blockerWhy)}</p>` : ""}
+        <div class="flex flex-wrap gap-2">
+          ${heroRecoveryAction?.id ? `<button id="${escapeHtml(heroRecoveryAction.id)}" ${heroRecoveryBusy ? "disabled" : ""} class="rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold hover:bg-emerald-800 transition ${heroRecoveryBusy ? "opacity-60 cursor-not-allowed" : ""}">${heroRecoveryBusy ? "Working…" : escapeHtml(String(heroRecoveryAction.label || "Continue with Deplo"))}</button>` : ""}
+          <button id="cancelFixNextBtn" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition">Back</button>
+        </div>
         ${executionCenter}
         ${missingInputFlow}
         ${compactConfidence}
-        <div class="flex flex-wrap gap-2">
-          <button id="cancelFixNextBtn" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition">Back</button>
-        </div>
         ${showProgress
           ? `<div class="pt-1">
               <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
