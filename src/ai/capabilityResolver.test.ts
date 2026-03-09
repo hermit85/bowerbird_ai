@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createEmptyInspectionFindings } from "../detection/stackDetector";
 import { resolveCapabilities } from "./capabilityResolver";
 
 test("resolves backend capabilities from stack", () => {
@@ -9,6 +10,7 @@ test("resolves backend capabilities from stack", () => {
       deploy: "vercel",
       database: "supabase",
       backend: "supabase-functions",
+      inspectionFindings: createEmptyInspectionFindings(),
     },
     launch: {
       databaseConnected: false,
@@ -27,4 +29,3 @@ test("resolves backend capabilities from stack", () => {
     backendProvider: "supabase-functions",
   });
 });
-
