@@ -1,4 +1,4 @@
-// operationTimeline.js — Structured founder-facing operation timeline
+// operationTimeline.js - Structured founder-facing operation timeline
 
 function escapeHtml(value) {
   return String(value)
@@ -171,7 +171,7 @@ function findJobOutput(activityEntry, operations) {
 }
 
 // ---------------------------------------------------------------------------
-// buildTimeline — pure function, merges data sources into timeline entries
+// buildTimeline - pure function, merges data sources into timeline entries
 // ---------------------------------------------------------------------------
 
 export function buildTimeline(activityLog, operations, executionPlan, prodConfirmChecked) {
@@ -183,7 +183,7 @@ export function buildTimeline(activityLog, operations, executionPlan, prodConfir
   );
 
   if (planActive && planSteps.length > 0) {
-    // Plan is actively running — use plan steps as authoritative source
+    // Plan is actively running - use plan steps as authoritative source
     for (let i = 0; i < planSteps.length; i++) {
       const step = planSteps[i];
       const operation = String(step?.operation || "");
@@ -238,7 +238,7 @@ export function buildTimeline(activityLog, operations, executionPlan, prodConfir
 }
 
 // ---------------------------------------------------------------------------
-// computeOutcome — summary block when all steps are complete
+// computeOutcome - summary block when all steps are complete
 // ---------------------------------------------------------------------------
 
 export function computeOutcome(entries) {
@@ -323,12 +323,12 @@ function renderOutcomeSummary(outcome) {
 }
 
 // ---------------------------------------------------------------------------
-// OperationTimeline — main render function
+// OperationTimeline - main render function
 // ---------------------------------------------------------------------------
 
 export function OperationTimeline({ entries, outcome, expandedIds, doctorReport }) {
   if (entries.length === 0) {
-    // Empty state — welcoming, not blank
+    // Empty state - welcoming, not blank
     let envLine = "○ Checking environment";
     if (doctorReport) {
       const checks = Array.isArray(doctorReport.checks) ? doctorReport.checks : [];
@@ -338,7 +338,7 @@ export function OperationTimeline({ entries, outcome, expandedIds, doctorReport 
       if (checks.length > 0 && !hasBlocker && !hasWarning) {
         envLine = "✓ Environment ready";
       } else if (hasBlocker) {
-        envLine = "○ Environment blocked — check Doctor in Advanced";
+        envLine = "○ Environment blocked - check Doctor in Advanced";
       } else if (hasWarning) {
         envLine = "○ Environment needs attention";
       }
@@ -346,8 +346,8 @@ export function OperationTimeline({ entries, outcome, expandedIds, doctorReport 
 
     return `
       <section class="mt-8 rounded-3xl bg-white/88 p-6 shadow-soft border border-slate-200/70">
-        <h2 class="text-lg font-semibold">Recent progress</h2>
-        <p class="mt-1 text-sm text-slate-600">Your launch momentum, one clear step at a time.</p>
+        <h2 class="text-lg font-semibold">What we've done so far</h2>
+        <p class="mt-1 text-sm text-slate-600">Simple progress updates, one step at a time.</p>
         <ul class="mt-3 space-y-2 text-sm text-slate-600">
           <li class="flex items-center gap-2">
             <span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-xs text-emerald-600">✓</span>
@@ -446,8 +446,8 @@ export function OperationTimeline({ entries, outcome, expandedIds, doctorReport 
 
   return `
     <section class="mt-8 rounded-3xl bg-white/88 p-6 shadow-soft border border-slate-200/70">
-      <h2 class="text-lg font-semibold mb-1">Recent progress</h2>
-      <p class="mb-3 text-sm text-slate-600">A trusted timeline showing what moved forward and what is still in progress.</p>
+      <h2 class="text-lg font-semibold mb-1">What we've done so far</h2>
+      <p class="mb-3 text-sm text-slate-600">A clear timeline of progress and what is still running.</p>
       ${outcomeHtml}
       <ol class="list-none m-0 p-0">${rows}</ol>
     </section>

@@ -1,4 +1,5 @@
 import { enqueue } from "../engine/engine";
+import { createEmptyInspectionFindings } from "../detection/stackDetector";
 import { buildExecutionPlan } from "./planBuilder";
 import { parseAIInstructions } from "./parser";
 import { resolveCapabilities } from "./capabilityResolver";
@@ -27,6 +28,7 @@ function defaultContext(): AIContext {
       deploy: null,
       database: null,
       backend: null,
+      inspectionFindings: createEmptyInspectionFindings(),
     },
     launch: {
       databaseConnected: false,

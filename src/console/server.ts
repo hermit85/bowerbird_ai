@@ -30,6 +30,7 @@ type StatusPayload = {
   git: ProjectState["git"];
   vercel: ProjectState["vercel"];
   stack: ReturnType<typeof detectStack>;
+  inspectionFindings: ReturnType<typeof detectStack>["inspectionFindings"];
   supabase: ProjectState["supabase"] & {
     functionsRequired?: boolean;
   };
@@ -448,6 +449,7 @@ async function getStatus(): Promise<StatusPayload> {
     git: resolvedState.git,
     vercel: resolvedState.vercel,
     stack,
+    inspectionFindings: stack.inspectionFindings,
     supabase: {
       ...resolvedState.supabase,
       functionsRequired: deployableFunctions.length > 0,
@@ -779,6 +781,7 @@ async function handleApi(request: http.IncomingMessage, response: http.ServerRes
       reasoning: plan.reasoning,
       intents: plan.intents,
       stack,
+      inspectionFindings: stack.inspectionFindings,
     });
     return;
   }
