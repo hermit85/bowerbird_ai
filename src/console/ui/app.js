@@ -755,99 +755,6 @@ function resolveFounderFlowNarration({
   return narration;
 }
 
-function renderFounderFlowNarration(narration) {
-  if (!narration || typeof narration !== "object") return "";
-  return `
-    <div class="mt-3 rounded-lg border border-slate-200 bg-white/75 px-3 py-2">
-      <p class="text-xs text-slate-700"><span class="font-semibold text-slate-800">What just happened:</span> ${escapeHtml(String(narration.justHappened || ""))}</p>
-      <p class="mt-1 text-xs text-slate-600"><span class="font-semibold text-slate-700">Where you are now:</span> ${escapeHtml(String(narration.whereNow || ""))}</p>
-      <p class="mt-1 text-xs text-slate-600"><span class="font-semibold text-slate-700">After this:</span> ${escapeHtml(String(narration.whatNext || ""))}</p>
-    </div>
-  `;
-}
-
-function resolveFounderStepFlow({
-  makerScreen = "",
-  proof = null,
-  projectSource = { mode: "local" },
-  doctorReport = null,
-  loading = {},
-  localProjectDetected = false,
-}) {
-  const steps = [
-    { id: "project_found", label: "Project found" },
-    { id: "checking_app", label: "Checking app" },
-    { id: "blocker_found", label: "Blocker found" },
-    { id: "waiting_for_input", label: "Waiting for your input" },
-    { id: "continuing_with_deplo", label: "Continuing with Deplo" },
-    { id: "app_is_live", label: "App is live" },
-    { id: "keeping_healthy", label: "Keeping it healthy" },
-  ];
-  const variant = String(proof?.variant || "no_proof_yet");
-  const sourceMode = String(projectSource?.mode || "none");
-  const hasReport = Boolean(doctorReport && typeof doctorReport === "object");
-  const hasBlocking = Boolean(proof?.hasBlockingInput);
-  const phase = String(projectSource?.phase || "");
-  let currentStepId = "project_found";
-
-  if (makerScreen === "sourceSelection") {
-    currentStepId = localProjectDetected ? "project_found" : "project_found";
-  } else if (sourceMode === "github" && (phase === "importing" || phase === "checking")) {
-    currentStepId = "checking_app";
-  } else if (Boolean(loading?.runFixNowBtn) || Boolean(loading?.fixNextBtn) || Boolean(loading?.verifyLiveAppBtn)) {
-    currentStepId = "continuing_with_deplo";
-  } else if (variant === "live_stable") {
-    currentStepId = "keeping_healthy";
-  } else if (variant === "live_needs_input") {
-    currentStepId = "waiting_for_input";
-  } else if (makerScreen === "fixFlow") {
-    currentStepId = hasBlocking ? "waiting_for_input" : "continuing_with_deplo";
-  } else if (!hasReport || Boolean(loading?.aiAnalyzeBtn)) {
-    currentStepId = "checking_app";
-  } else if (hasBlocking) {
-    currentStepId = "blocker_found";
-  } else if (variant === "preview_ready") {
-    currentStepId = "continuing_with_deplo";
-  } else if (variant === "no_proof_yet") {
-    currentStepId = "checking_app";
-  }
-
-  const currentIndex = Math.max(0, steps.findIndex((step) => step.id === currentStepId));
-  const nextStepId = currentIndex < steps.length - 1 ? steps[currentIndex + 1].id : "";
-  const visible = steps.filter((_, index) => Math.abs(index - currentIndex) <= 2 || index === 0 || index === steps.length - 1);
-  return {
-    steps: visible.map((step) => {
-      const idx = steps.findIndex((candidate) => candidate.id === step.id);
-      return {
-        ...step,
-        status: idx < currentIndex ? "done" : idx === currentIndex ? "current" : "upcoming",
-      };
-    }),
-    currentStepId,
-    nextStepId,
-  };
-}
-
-function renderFounderStepFlowRail(stepFlow) {
-  if (!stepFlow || !Array.isArray(stepFlow.steps) || stepFlow.steps.length === 0) return "";
-  return `
-    <div class="mt-3">
-      <div class="text-[11px] uppercase tracking-[0.12em] font-semibold text-slate-500">Founder flow</div>
-      <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
-        ${stepFlow.steps.map((step) => {
-          const tone = step.status === "current"
-            ? "border-sky-200 bg-sky-50 text-sky-800"
-            : step.status === "done"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-slate-200 bg-slate-50 text-slate-600";
-          const marker = step.status === "current" ? "●" : step.status === "done" ? "✓" : "○";
-          return `<span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${tone}"><span>${marker}</span><span>${escapeHtml(String(step.label || ""))}</span></span>`;
-        }).join('<span class="text-slate-300">•</span>')}
-      </div>
-    </div>
-  `;
-}
-
 function renderOnboardingScreen(status, localProjectDetectedOverride = null) {
   const localProjectDetected = typeof localProjectDetectedOverride === "boolean"
     ? localProjectDetectedOverride
@@ -861,13 +768,16 @@ function renderOnboardingScreen(status, localProjectDetectedOverride = null) {
     subline: localProjectDetected
       ? "Start the check and Deplo will identify what is blocking launch."
       : "Choose a source and Deplo will check what is blocking launch, then show one clear next step.",
+    currentTruth: localProjectDetected ? "Deplo is ready to start checking your app." : "Deplo is waiting for a project source.",
     primaryAction: localProjectDetected ? { id: "startScanBtn", label: "Inspect this project" } : { id: "startGithubBtn", label: "Connect GitHub project" },
     afterThisText: "Deplo checks your app and returns the next operator step.",
-    progressEntries: [
-      localProjectDetected ? "Found your project in this workspace" : "Waiting for project source",
-      "Next: check what is blocking launch",
-      "Then: show one clear action",
-    ],
+    progressEntries: resolveShellProgressEntries({
+      projectName: showProjectName ? projectName : "your project",
+      sourceConnected: localProjectDetected,
+      isChecking: false,
+      nextStep: "check what is blocking launch",
+      statusUpdate: "Then Deplo will show one clear action",
+    }),
   });
   return `
     <div class="max-w-3xl mx-auto p-4 space-y-4">
@@ -910,7 +820,7 @@ function resolveImportStateSummary({ hasConnectedRepo, phase }) {
       checkingLine: "Deplo is waiting for your repository source.",
       blockerLine: "Blocker: project URL is still missing.",
       nextLine: "Next: paste your GitHub URL so Deplo can inspect project context.",
-      verificationLine: "Verification: no project context available yet.",
+      verificationLine: "Still waiting for a project source.",
       primaryLabel: "Check imported repo",
     };
   }
@@ -919,15 +829,15 @@ function resolveImportStateSummary({ hasConnectedRepo, phase }) {
       checkingLine: "Deplo is checking what can be confirmed from the connected repo.",
       blockerLine: "Blocker: Deplo still needs direct project access for full runtime verification.",
       nextLine: "Next: let Deplo inspect this project directly.",
-      verificationLine: "Verification: repo connection confirmed; runtime and live checks still pending.",
+      verificationLine: "Project source connected. Deplo still needs direct access to keep checking.",
       primaryLabel: "Check this project",
     };
   }
   return {
     checkingLine: "Deplo has repo context and is ready to continue the operator flow.",
     blockerLine: "Blocker: full deploy/runtime truth is not yet proven from GitHub source alone.",
-    nextLine: "Next: run direct project inspection to unblock fix and verification runs.",
-    verificationLine: "Verification: source connected; deeper checks require local access.",
+    nextLine: "Next: let Deplo inspect this project directly.",
+    verificationLine: "Source connected. Deplo still needs direct project access to keep going.",
     primaryLabel: "Check this project",
   };
 }
@@ -983,7 +893,7 @@ function resolveDiagnosisCopyFromProof({
             : "One required setup step remains.")
         : "No blocker input is required right now.",
       expectedOutcome: proof?.hasBlockingInput
-        ? "After this, Deplo can continue toward deploy proof."
+        ? "After this, Deplo will keep going automatically."
         : "After this, you'll get a preview URL for review.",
     },
     preview_ready: {
@@ -996,7 +906,7 @@ function resolveDiagnosisCopyFromProof({
       blockerLine: "No required setup input right now.",
       deploCanDo: "Deplo can keep iterating, then redeploy when you're ready.",
       needsInput: "No blocking input is needed right now.",
-      expectedOutcome: "Review the preview, request changes, or move toward live readiness.",
+      expectedOutcome: "After this, you can review the preview and decide what to do next.",
     },
     preview_needs_input: {
       statusTone: "border-amber-200 bg-amber-50 text-amber-900",
@@ -1012,7 +922,7 @@ function resolveDiagnosisCopyFromProof({
       needsInput: proof?.remainingInputSeverity === "recommended"
         ? "One recommended setup step remains for fuller access."
         : "One required setup step remains before full readiness.",
-      expectedOutcome: "After this, Deplo can redeploy and confirm full readiness.",
+      expectedOutcome: "After this, Deplo will try to finish setup.",
     },
     live_needs_input: {
       statusTone: "border-amber-200 bg-amber-50 text-amber-900",
@@ -1028,7 +938,7 @@ function resolveDiagnosisCopyFromProof({
       needsInput: proof?.remainingInputSeverity === "recommended"
         ? "One recommended setup step remains for full access."
         : "One required setup step remains for full readiness.",
-      expectedOutcome: "After this, your live app will be fully configured.",
+      expectedOutcome: "After this, we'll check whether everything is ready.",
     },
     live_stable: {
       statusTone: "border-emerald-200 bg-emerald-50 text-emerald-900",
@@ -1040,7 +950,7 @@ function resolveDiagnosisCopyFromProof({
       blockerLine: "No required setup input right now.",
       deploCanDo: "Deplo can support iterative fixes and redeploys as you keep building.",
       needsInput: "No blocking input is needed right now.",
-      expectedOutcome: "Open your live app, keep improving it, and redeploy when needed.",
+      expectedOutcome: "After this, you can keep using your app and come back whenever you want another check.",
     },
   };
 
@@ -1117,65 +1027,20 @@ function resolveFounderMissionControlModel({ proof, copy, priority, isScanning }
   };
 }
 
-function renderFounderMissionHeader({
-  mission,
-  proof,
-  primaryCta = "",
-  secondaryActions = "",
-  narrationHtml = "",
-  stepFlowHtml = "",
-  liveNeedsInputHeroRecovery = "",
-  topRecoveryUnit = null,
-  lastDeployRecency = "",
-  showProjectName = false,
-  projectName = "Current project",
-}) {
-  const recoveryFollowup = String(topRecoveryUnit?.afterResolution || mission?.nextPayoff || "").trim();
-  return `
-    <section class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/70 px-4 py-4 space-y-3">
-      <div class="flex flex-wrap items-center gap-2">
-        <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${escapeHtml(String(mission?.priorityTone || "bg-slate-100 text-slate-700 border border-slate-200"))}">${escapeHtml(String(mission?.priorityLabel || "Mission"))}</span>
-        <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${escapeHtml(String(proof?.badgeTone || "bg-slate-100 text-slate-800"))}">
-          ${escapeHtml(String(proof?.badgeLabel || "Not yet proven"))}
-        </span>
-      </div>
-      <h2 class="text-2xl font-semibold text-slate-900">${escapeHtml(String(mission?.heroHeadline || "Mission control"))}</h2>
-      <p class="text-sm text-slate-700">${escapeHtml(String(mission?.heroSummary || ""))}</p>
-      ${stepFlowHtml}
-      ${narrationHtml}
-      ${liveNeedsInputHeroRecovery}
-      <div class="rounded-lg border border-slate-200 bg-white px-3 py-2">
-        <p class="text-xs text-slate-600"><span class="font-semibold text-slate-800">What this means:</span> ${escapeHtml(String(mission?.whatMattersNow || "Deplo identified the next step."))}</p>
-        <p class="mt-1 text-xs text-slate-600"><span class="font-semibold text-slate-800">After your next action:</span> ${escapeHtml(recoveryFollowup || String(mission?.nextPayoff || "Deplo continues and verifies the result."))}</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        ${primaryCta}
-        ${secondaryActions}
-      </div>
-      ${proof?.url ? `
-        <div class="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2">
-          <div class="text-[11px] uppercase tracking-[0.12em] font-semibold text-emerald-800">${proof.variant === "live_stable" || proof.variant === "live_needs_input" ? "Live URL" : "Preview URL"}</div>
-          <a href="${escapeHtml(proof.url)}" target="_blank" rel="noopener noreferrer" class="mt-1 inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-800 hover:text-emerald-900 break-all">
-            ${escapeHtml(proof.url)} <span class="text-emerald-600">↗</span>
-          </a>
-          ${lastDeployRecency ? `<p class="mt-1 text-xs text-emerald-800/80">${escapeHtml(lastDeployRecency)}</p>` : ""}
-        </div>
-      ` : ""}
-      <p class="text-xs text-slate-500">Project: ${escapeHtml(showProjectName ? projectName : "Current project")} · Source: ${escapeHtml(String(proof?.sourceIdentity || "Current source"))}</p>
-    </section>
-  `;
-}
-
 function resolveFounderRuntimeShellState({
   stage = "Starting",
   projectName = "Choose source",
   headline = "",
   subline = "",
+  currentTruth = "",
+  currentTruthVariant = "working",
   deployUrl = "",
   blockerText = "",
   primaryAction = null,
   afterThisText = "",
   recoveryCommand = "",
+  waitingForText = "",
+  resumeAfterText = "",
   progressEntries = [],
   healthState = "",
   previewUrl = "",
@@ -1185,21 +1050,39 @@ function resolveFounderRuntimeShellState({
     projectName: String(projectName || "Choose source"),
     headline: String(headline || ""),
     subline: String(subline || ""),
+    currentTruth: String(currentTruth || ""),
+    currentTruthVariant: String(currentTruthVariant || "working"),
     deployUrl: String(deployUrl || ""),
     blockerText: String(blockerText || ""),
     primaryAction: primaryAction && primaryAction.id ? primaryAction : null,
     afterThisText: String(afterThisText || ""),
     recoveryCommand: String(recoveryCommand || ""),
+    waitingForText: String(waitingForText || ""),
+    resumeAfterText: String(resumeAfterText || ""),
     progressEntries: Array.isArray(progressEntries) ? progressEntries.filter(Boolean).slice(0, 5) : [],
     healthState: String(healthState || ""),
     previewUrl: String(previewUrl || ""),
   };
 }
 
-function renderFounderRuntimeShell({ shellState, loading = {}, detailsHtml = "", extraBodyHtml = "" }) {
+function renderFounderRuntimeShell({ shellState, loading = {}, detailsHtml = "", technicalDetailsHtml = "", extraBodyHtml = "" }) {
   if (!shellState || typeof shellState !== "object") return "";
   const action = shellState.primaryAction;
   const actionBusy = Boolean(action?.id && loading?.[action.id]);
+  const truthColorMap = {
+    waiting:  "text-amber-800 border-amber-200 bg-amber-50/70",
+    working:  "text-sky-800 border-sky-200 bg-sky-50/70",
+    live:     "text-emerald-800 border-emerald-200 bg-emerald-50/70",
+  };
+  const truthClasses = truthColorMap[shellState.currentTruthVariant] || truthColorMap.working;
+  const shellStageBadgeMap = {
+    "Starting":  "border-slate-200 bg-slate-50 text-slate-700",
+    "Needs you": "border-amber-200 bg-amber-50 text-amber-800",
+    "Working":   "border-sky-200 bg-sky-50 text-sky-800",
+    "Live":      "border-emerald-200 bg-emerald-50 text-emerald-800",
+    "Watching":  "border-emerald-200 bg-emerald-50 text-emerald-800",
+  };
+  const shellStageBadgeClasses = shellStageBadgeMap[shellState.stage] || shellStageBadgeMap["Starting"];
   return `
     <section class="rounded-2xl border border-slate-300/75 bg-white p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)] space-y-4">
       <div class="flex flex-wrap items-center gap-2 text-xs">
@@ -1207,11 +1090,12 @@ function renderFounderRuntimeShell({ shellState, loading = {}, detailsHtml = "",
         <span class="text-slate-300">•</span>
         <span class="text-slate-700">${escapeHtml(String(shellState.projectName || "Choose source"))}</span>
         <span class="text-slate-300">•</span>
-        <span class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-700">${escapeHtml(String(shellState.stage || "Starting"))}</span>
+        <span class="rounded-full border px-2 py-0.5 ${shellStageBadgeClasses}">${escapeHtml(String(shellState.stage || "Starting"))}</span>
       </div>
       <section class="rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/70 px-4 py-4 space-y-2.5">
         <h2 class="text-2xl font-semibold text-slate-900">${escapeHtml(String(shellState.headline || ""))}</h2>
         <p class="text-sm text-slate-700">${escapeHtml(String(shellState.subline || ""))}</p>
+        ${shellState.currentTruth ? `<p class="text-xs rounded-md border px-2.5 py-1.5 ${truthClasses}">${escapeHtml(String(shellState.currentTruth))}</p>` : ""}
         ${shellState.deployUrl
           ? `<p class="text-xs text-slate-600">URL: <a href="${escapeHtml(shellState.deployUrl)}" target="_blank" rel="noopener noreferrer" class="font-medium text-emerald-700 hover:text-emerald-800 underline underline-offset-2 break-all">${escapeHtml(shellState.deployUrl)}</a></p>`
           : ""}
@@ -1222,7 +1106,9 @@ function renderFounderRuntimeShell({ shellState, loading = {}, detailsHtml = "",
         <div class="flex flex-wrap gap-2">
           ${action?.id ? `<button id="${escapeHtml(action.id)}" ${actionBusy ? "disabled" : ""} class="rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold hover:bg-emerald-800 transition ${actionBusy ? "opacity-60 cursor-not-allowed" : ""}">${actionBusy ? "Working…" : escapeHtml(String(action.label || "Continue with Deplo"))}</button>` : ""}
         </div>
-        ${shellState.afterThisText ? `<p class="text-xs text-slate-600"><span class="font-semibold text-slate-700">After this:</span> ${escapeHtml(shellState.afterThisText)}</p>` : ""}
+        ${shellState.waitingForText ? `<p class="text-xs text-slate-600"><span class="font-semibold text-slate-700">Waiting for:</span> ${escapeHtml(String(shellState.waitingForText))}</p>` : ""}
+        ${shellState.afterThisText ? `<p class="text-xs text-slate-600"><span class="font-semibold text-slate-700">After this:</span> ${escapeHtml(toFounderShellAfterThisText(shellState.afterThisText, shellState.afterThisText))}</p>` : ""}
+        ${shellState.resumeAfterText ? `<p class="text-xs text-slate-500">${escapeHtml(String(shellState.resumeAfterText))}</p>` : ""}
         ${shellState.recoveryCommand ? `<div class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-700 flex items-center gap-2">
           <code class="font-mono break-all">${escapeHtml(shellState.recoveryCommand)}</code>
           <button data-copy-text="${escapeHtml(shellState.recoveryCommand)}" class="ml-auto rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50">Copy</button>
@@ -1230,14 +1116,18 @@ function renderFounderRuntimeShell({ shellState, loading = {}, detailsHtml = "",
       </section>
       ${extraBodyHtml}
       <section class="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 space-y-1.5">
-        <div class="text-[11px] uppercase tracking-[0.12em] font-semibold text-slate-500">Progress ledger</div>
+        <div class="text-[11px] uppercase tracking-[0.12em] font-semibold text-slate-500">What Deplo already did</div>
         <ul class="space-y-1 text-sm text-slate-700">
           ${(Array.isArray(shellState.progressEntries) ? shellState.progressEntries : []).map((entry) => `<li>• ${escapeHtml(String(entry))}</li>`).join("")}
         </ul>
       </section>
       ${detailsHtml ? `<details class="rounded-xl border border-slate-200 bg-white">
-        <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700 hover:text-slate-900 transition">Details</summary>
+        <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700 hover:text-slate-900 transition">What Deplo is doing</summary>
         <div class="px-4 pb-4 space-y-3">${detailsHtml}</div>
+      </details>` : ""}
+      ${technicalDetailsHtml ? `<details class="rounded-xl border border-slate-200 bg-white">
+        <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700 hover:text-slate-900 transition">Technical details</summary>
+        <div class="px-4 pb-4 space-y-3">${technicalDetailsHtml}</div>
       </details>` : ""}
     </section>
   `;
@@ -1260,6 +1150,179 @@ function toFounderIssueTitle(raw, context = {}) {
     return "Deploy platform access needs refresh.";
   }
   return text;
+}
+
+function toFounderShellBlockerText(raw, fallback = "One setup step still needs your input.") {
+  const text = normalizeFounderBlockerText(String(raw || "").trim());
+  if (!text) return fallback;
+  const lowered = text.toLowerCase();
+  if (lowered.includes("proof")) return fallback;
+  if (lowered.includes("verification")) return "One setup step still needs to be checked after your input.";
+  if (lowered.includes("runtime readiness")) return "One setup step is still keeping the app from being fully ready.";
+  if (lowered.includes("deploy status")) return "Deplo still needs to check whether launch is fully set up.";
+  if (lowered.includes("deploy/runtime")) return "Deplo still needs a fuller app check before launch is confirmed.";
+  if (lowered.includes("recovery unit")) return fallback;
+  if (lowered.includes("fix remaining database access")) return "Database access still needs confirmation.";
+  if (lowered.includes("fix remaining deploy setup")) return "Deploy platform access still needs attention.";
+  if (lowered.includes("fix remaining access setup")) return "Access still needs confirmation.";
+  if (lowered.includes("fix remaining setup input")) return fallback;
+  return toFounderIssueTitle(text) || fallback;
+}
+
+function toFounderShellAfterThisText(raw, fallback = "Deplo will continue checking your app.") {
+  const text = String(raw || "").trim();
+  if (!text) return fallback;
+  const lowered = text.toLowerCase();
+  if (lowered.includes("provider-aware")) return "Deplo will keep going automatically.";
+  if (lowered.includes("runtime readiness")) return "Deplo will check whether your app is ready.";
+  if (lowered.includes("deploy status")) return "Deplo will check whether launch is fully set up.";
+  if (lowered.includes("verification") || lowered.includes("verify")) return "Deplo will continue checking your app.";
+  if (lowered.includes("proof")) return "Deplo will keep going automatically.";
+  if (lowered.includes("operator step")) return "Deplo will show the next step.";
+  return text
+    .replaceAll("operator flow", "next step")
+    .replaceAll("operator step", "next step");
+}
+
+function toFounderShellProgressText(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  const lowered = text.toLowerCase();
+  if (lowered.includes("verification: no project context available yet")) return "Still waiting for a project source.";
+  if (lowered.includes("runtime and live checks still pending")) return "Deplo still needs direct access to keep checking.";
+  if (lowered.includes("deeper checks require local access")) return "Deplo still needs direct project access to keep going.";
+  if (lowered.includes("verification")) return "Deplo is still checking what is ready.";
+  if (lowered.includes("runtime readiness")) return "Deplo is checking whether your app is ready.";
+  if (lowered.includes("deploy status")) return "Deplo is checking launch setup.";
+  if (lowered.includes("provider-aware")) return "Deplo is continuing setup checks.";
+  return text
+    .replaceAll("runtime readiness", "whether your app is ready")
+    .replaceAll("deploy status", "launch setup");
+}
+
+function resolveShellProgressEntries({
+  projectName = "",
+  sourceConnected = false,
+  isChecking = false,
+  blockerText = "",
+  appLive = false,
+  lastCompletedAction = "",
+  actionInProgress = "",
+  nextStep = "",
+  statusUpdate = "",
+}) {
+  const entries = [];
+  entries.push(sourceConnected
+    ? `Connected ${projectName || "your project"}`
+    : "Waiting for your project source");
+  if (lastCompletedAction) {
+    entries.push(`Last completed: ${toFounderShellProgressText(lastCompletedAction)}`);
+  }
+  entries.push(isChecking ? "Checking what is blocking launch" : "Checked what is blocking launch");
+  if (blockerText) {
+    entries.push(`Found one blocker: ${toFounderShellBlockerText(blockerText, blockerText)}`);
+  }
+  if (appLive) {
+    entries.push("Your app is live");
+  }
+  if (actionInProgress) {
+    entries.push(toFounderShellProgressText(actionInProgress));
+  }
+  if (nextStep) {
+    entries.push(`Next: ${toFounderShellAfterThisText(nextStep, nextStep)}`);
+  }
+  if (statusUpdate) {
+    entries.push(toFounderShellProgressText(statusUpdate));
+  }
+  const seen = new Set();
+  return entries.filter(Boolean).filter((entry) => {
+    const key = String(entry).trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 5);
+}
+
+function resolveFounderCurrentTruth({ continuity = null, proof = null, loading = {}, sourceMode = "local" }) {
+  if (continuity?.waitingOnUser) {
+    const needed = String(continuity.waitingOnUser?.handoff?.requiredInput || continuity.waitingOnUser?.title || "one setup step");
+    return sourceMode === "github"
+      ? "Deplo is waiting for direct project access before it can continue."
+      : `Deplo is waiting for your input: ${needed}.`;
+  }
+  if (Boolean(loading?.verifyLiveAppBtn) || continuity?.waitingOnVerification) {
+    return "Deplo is checking again now.";
+  }
+  if (continuity?.activeAction?.executionState === "running" || Boolean(loading?.runFixNowBtn) || Boolean(loading?.aiAnalyzeBtn)) {
+    return "Deplo is continuing setup.";
+  }
+  if (continuity?.lastKnownOutcome === "failed") {
+    return "Deplo hit a problem and is waiting for the next step.";
+  }
+  if (proof?.variant === "live_stable" || proof?.variant === "live_needs_input") {
+    return "Your app is live.";
+  }
+  if (continuity?.canResumeNow && continuity?.resumableNextStep?.id) {
+    return "Deplo is ready to continue from your last step.";
+  }
+  if (continuity?.lastKnownOutcome === "ready_to_resume") {
+    return "Nothing else is needed right now.";
+  }
+  return "Deplo is checking your project.";
+}
+
+function resolveFounderShellPrimaryAction({ continuity = null, fallbackAction = null, recoveryUnit = null }) {
+  const fallback = fallbackAction && fallbackAction.id ? fallbackAction : null;
+  const resume = continuity?.resumableNextStep && continuity.resumableNextStep.id
+    ? continuity.resumableNextStep
+    : null;
+  const hasManualStep = Boolean(String(recoveryUnit?.howToResolve?.command || "").trim());
+
+  if (continuity?.waitingOnUser && hasManualStep && (recoveryUnit?.continueAction?.id || resume?.id)) {
+    const next = recoveryUnit?.continueAction?.id ? recoveryUnit.continueAction : resume;
+    return next?.id ? { ...next, label: "I finished this step" } : fallback;
+  }
+  if (continuity?.waitingOnUser && resume?.id) {
+    return { ...resume, label: "Continue with Deplo" };
+  }
+  if (continuity?.waitingOnVerification && resume?.id) {
+    return { ...resume, label: "Check again" };
+  }
+  if (resume?.id && (continuity?.activeAction?.executionState === "ready_to_run" || continuity?.lastKnownOutcome === "ready_to_resume")) {
+    return { ...resume, label: "Continue with Deplo" };
+  }
+  return fallback;
+}
+
+function resolveFounderShellContinuityLines({ continuity = null, recoveryUnit = null, sourceMode = "local" }) {
+  const source = String(sourceMode || "local");
+  const waitingOnUser = continuity?.waitingOnUser || null;
+  const waitingForText = source === "github" && waitingOnUser
+    ? "direct project access so Deplo can continue"
+    : String(
+      waitingOnUser?.handoff?.requiredInput
+      || recoveryUnit?.whatYouNeedToDo
+      || recoveryUnit?.title
+      || "",
+    ).trim();
+  let resumeAfterText = "";
+  if (waitingOnUser) {
+    resumeAfterText = String(
+      waitingOnUser?.handoff?.resumePlan
+      || recoveryUnit?.afterResolution
+      || "Once this is done, Deplo will continue automatically."
+    ).trim();
+  } else if (continuity?.waitingOnVerification) {
+    resumeAfterText = "Deplo already finished the step and is ready to check the result again.";
+  } else if (continuity?.activeAction?.executionState === "running") {
+    resumeAfterText = "Deplo is still working through the current step.";
+  } else if (continuity?.canResumeNow && continuity?.resumableNextStep?.id) {
+    resumeAfterText = "Deplo can pick up from the latest step.";
+  }
+  return {
+    waitingForText,
+    resumeAfterText,
+  };
 }
 
 function renderIssueSeverityBadge(severity) {
@@ -2767,13 +2830,6 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
     activityLog,
     loading,
   });
-  const stepFlow = resolveFounderStepFlow({
-    makerScreen,
-    proof,
-    projectSource,
-    doctorReport,
-    loading,
-  });
   const inspectionFindings = getInspectionFindings(status);
 
   const report = doctorReport && typeof doctorReport === "object" ? doctorReport : null;
@@ -2798,8 +2854,6 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
     okChecks,
     totalChecks,
   });
-  const priority = resolveFounderPriority({ proof, isScanning });
-  const mission = resolveFounderMissionControlModel({ proof, copy, priority, isScanning });
   const verificationEvidenceUnits = resolveVerificationEvidenceUnits({
     proof,
     doctorReport,
@@ -2975,45 +3029,6 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
       </div>`;
     }).join("");
 
-  // Primary action buttons
-  const fixBusy = Boolean(loading?.fixNextBtn);
-  const deployBusy = Boolean(loading?.deployNowBtn);
-  const scanningBusy = Boolean(loading?.aiAnalyzeBtn);
-  let primaryCta = "";
-  let secondaryActions = "";
-  if (isScanning) {
-    primaryCta = `<button id="aiAnalyzeBtn" ${scanningBusy ? "disabled" : ""} class="rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold hover:bg-emerald-800 transition ${scanningBusy ? "opacity-60 cursor-not-allowed" : ""}">${scanningBusy ? "Scanning…" : "Scan this project"}</button>`;
-  } else {
-    const actionBusyMap = {
-      fixNextBtn: fixBusy,
-      deployNowBtn: deployBusy,
-      aiAnalyzeBtn: scanningBusy,
-      runFixNowBtn: Boolean(loading?.runFixNowBtn),
-      openFirstVersionExternalBtn: false,
-      requestChangesFromPreviewBtn: false,
-      requestChangesBtn: false,
-    };
-    const primaryAction = heroPrimaryAction && heroPrimaryAction.id ? heroPrimaryAction : null;
-    if (primaryAction) {
-      const busy = Boolean(actionBusyMap[primaryAction.id]);
-      primaryCta = `<button id="${escapeHtml(primaryAction.id)}" ${busy ? "disabled" : ""} class="rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold hover:bg-emerald-800 transition ${busy ? "opacity-60 cursor-not-allowed" : ""}">${busy ? "Working…" : escapeHtml(String(primaryAction.label || "Continue"))}</button>`;
-    } else if (hasExistingDeploy) {
-      primaryCta = `<a href="${escapeHtml(lastDeployUrl)}" target="_blank" rel="noopener noreferrer" class="rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold hover:bg-emerald-800 transition inline-flex items-center gap-1.5">Open deploy <span class="text-emerald-300">↗</span></a>`;
-    } else {
-      primaryCta = `<button id="deployNowBtn" ${deployBusy ? "disabled" : ""} class="rounded-full bg-emerald-700 text-white px-5 py-2.5 text-sm font-semibold hover:bg-emerald-800 transition ${deployBusy ? "opacity-60 cursor-not-allowed" : ""}">${deployBusy ? "Deploying…" : "Deploy now"}</button>`;
-    }
-    const isLiveNeedsInput = proof?.variant === "live_needs_input";
-    secondaryActions = Array.isArray(proof?.secondaryActions)
-      ? proof.secondaryActions
-          .filter((action) => action
-            && action.id
-            && action.id !== heroPrimaryAction?.id
-            && (!isLiveNeedsInput || !String(action.id).startsWith("requestChanges")))
-          .map((action) => renderProofActionButton(action, false))
-          .join("")
-      : "";
-  }
-
   const shellStage = (() => {
     if (proof?.variant === "live_stable") return "Watching";
     if (proof?.variant === "live_needs_input") return "Live";
@@ -3021,29 +3036,49 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
     if (topRecoveryAction?.id || proof?.hasBlockingInput) return "Needs you";
     return "Starting";
   })();
-  const topAction = heroPrimaryAction?.id
-    ? heroPrimaryAction
-    : (topRecoveryAction?.id ? topRecoveryAction : null);
+  const topAction = resolveFounderShellPrimaryAction({
+    continuity: sessionContinuity,
+    fallbackAction: heroPrimaryAction?.id
+      ? heroPrimaryAction
+      : (topRecoveryAction?.id ? topRecoveryAction : null),
+    recoveryUnit: topRecoveryUnit,
+  });
+  const shellContinuity = resolveFounderShellContinuityLines({
+    continuity: sessionContinuity,
+    recoveryUnit: topRecoveryUnit,
+    sourceMode: String(projectSource?.mode || "local"),
+  });
   const shellSubline = isLiveNeedsInput
     ? "Your app is already live. One setup step still needs your input."
-    : String(flowNarration?.justHappened || mission?.heroSummary || "Deplo is checking your app.");
+    : String(flowNarration?.justHappened || "Deplo is checking your project.");
   const shellState = resolveFounderRuntimeShellState({
     stage: shellStage,
     projectName: showProjectName ? projectName : "Current project",
-    headline: String(mission?.heroHeadline || "Deplo mission control"),
+    headline: String(copy?.statusLine || (isScanning ? "Checking your project" : "Setting up your project")),
     subline: shellSubline,
+    currentTruth: resolveFounderCurrentTruth({
+      continuity: sessionContinuity,
+      proof,
+      loading,
+      sourceMode: String(projectSource?.mode || "local"),
+    }),
     deployUrl: String(proof?.url || ""),
-    blockerText: topRecoveryUnit?.title || (proof?.hasBlockingInput ? String(mission?.whatMattersNow || "") : ""),
+    blockerText: toFounderShellBlockerText(topRecoveryUnit?.title || topIssue || ""),
     primaryAction: topAction,
-    afterThisText: String(topRecoveryUnit?.afterResolution || flowNarration?.whatNext || mission?.nextPayoff || "").trim(),
+    afterThisText: String(topRecoveryUnit?.afterResolution || flowNarration?.whatNext || copy?.expectedOutcome || "").trim(),
     recoveryCommand: String(topRecoveryUnit?.howToResolve?.command || "").trim(),
-    progressEntries: [
-      showProjectName ? `Connected ${projectName}` : "Connected your project",
-      isScanning ? "Checking what is blocking launch" : "Checked what is blocking launch",
-      topRecoveryUnit?.title ? `Found blocker: ${topRecoveryUnit.title}` : "",
-      proof?.variant === "live_stable" || proof?.variant === "live_needs_input" ? "Published your app" : "",
-      watchModeForRender?.whatChanged ? `Update: ${watchModeForRender.whatChanged}` : "",
-    ],
+    waitingForText: shellContinuity.waitingForText,
+    resumeAfterText: shellContinuity.resumeAfterText,
+    progressEntries: resolveShellProgressEntries({
+      projectName: showProjectName ? projectName : "your project",
+      sourceConnected: true,
+      isChecking: isScanning,
+      blockerText: topRecoveryUnit?.title || topIssue || "",
+      appLive: proof?.variant === "live_stable" || proof?.variant === "live_needs_input",
+      lastCompletedAction: sessionContinuity?.lastCompletedAction || "",
+      nextStep: String(topRecoveryUnit?.afterResolution || flowNarration?.whatNext || "").trim(),
+      statusUpdate: watchModeForRender?.whatChanged ? `Update: ${watchModeForRender.whatChanged}` : "",
+    }),
     healthState: String(watchModeForRender?.watchState || ""),
     previewUrl: String(proof?.url || ""),
   });
@@ -3059,9 +3094,17 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
       ? renderMissingInputFlow({ actions: founderActions, recoveryUnits: [topRecoveryUnit], loading, expanded: false })
       : "",
     renderOperatorSessionContinuity({ continuity: sessionContinuity, loading, compact: true }),
-    renderVerificationEvidenceSection({ evidenceUnits: verificationEvidence, loading, compact: true }),
+    renderCompactVerificationSummary({
+      evidenceUnits: verificationEvidence,
+      loading,
+      primaryAction: null,
+    }),
     renderLiveHealthSection(liveHealth, proof, showProjectName ? projectName : "Current project", loading),
     renderWatchModeSection({ watch: watchModeForRender, loading, compact: true }),
+  ].filter((section) => String(section || "").trim().length > 0).join("");
+
+  const technicalDetailsHtml = [
+    renderVerificationEvidenceSection({ evidenceUnits: verificationEvidence, loading, compact: true }),
     nextActionRail,
     issueGroupsHtml,
     `<div>
@@ -3083,6 +3126,7 @@ function renderProjectDiagnosis({ status, doctorReport, loading, launchState, in
     loading,
     extraBodyHtml: `${liveNeedsInputHeroRecovery}${inlineLiveMonitoring}`,
     detailsHtml,
+    technicalDetailsHtml,
   })}
     </div>
   `;
@@ -3110,13 +3154,6 @@ function renderGithubImportState({ projectSource, loading, status = null, inputT
     doctorReport: null,
     resultBanner,
     activityLog,
-    loading,
-  });
-  const stepFlow = resolveFounderStepFlow({
-    makerScreen: "githubImport",
-    proof: { variant: "no_proof_yet", hasBlockingInput: hasConnectedRepo },
-    projectSource,
-    doctorReport: null,
     loading,
   });
   const inspectionFindings = getInspectionFindings(status);
@@ -3200,6 +3237,18 @@ function renderGithubImportState({ projectSource, loading, status = null, inputT
   const inspectionSummary = renderInspectionFindingsSummary(status, "github");
   const githubRail = renderNextActionRail({ actions: githubActions, loading });
   const githubContinuity = renderOperatorSessionContinuity({ continuity: githubSessionContinuity, loading, compact: true });
+  const githubPrimaryAction = resolveFounderShellPrimaryAction({
+    continuity: githubSessionContinuity,
+    fallbackAction: primaryRouteAction?.id
+      ? primaryRouteAction
+      : { id: "aiAnalyzeBtn", label: "Check imported project" },
+    recoveryUnit: Array.isArray(githubRecoveryUnits) ? githubRecoveryUnits[0] : null,
+  });
+  const githubContinuityLines = resolveFounderShellContinuityLines({
+    continuity: githubSessionContinuity,
+    recoveryUnit: Array.isArray(githubRecoveryUnits) ? githubRecoveryUnits[0] : null,
+    sourceMode: String(projectSource?.mode || "github"),
+  });
   const shellState = resolveFounderRuntimeShellState({
     stage: hasConnectedRepo ? "Working" : "Starting",
     projectName: repoLabel || "Choose source",
@@ -3207,16 +3256,26 @@ function renderGithubImportState({ projectSource, loading, status = null, inputT
     subline: hasConnectedRepo
       ? "We found your project source and started checking what is blocking launch."
       : "Connect your project and Deplo will start checking blockers.",
-    blockerText: importSummary.blockerLine.replace(/^Blocker:\s*/i, ""),
-    primaryAction: primaryRouteAction?.id
-      ? primaryRouteAction
-      : { id: "aiAnalyzeBtn", label: "Check imported project" },
+    currentTruth: resolveFounderCurrentTruth({
+      continuity: githubSessionContinuity,
+      proof: githubProof,
+      loading,
+      sourceMode: String(projectSource?.mode || "github"),
+    }),
+    blockerText: toFounderShellBlockerText(importSummary.blockerLine.replace(/^Blocker:\s*/i, ""), ""),
+    primaryAction: githubPrimaryAction,
     afterThisText: importSummary.nextLine.replace(/^Next:\s*/i, ""),
-    progressEntries: [
-      hasConnectedRepo ? "Connected your project source" : "Waiting for your project URL",
-      importSummary.checkingLine,
-      importSummary.verificationLine,
-    ],
+    waitingForText: githubContinuityLines.waitingForText,
+    resumeAfterText: githubContinuityLines.resumeAfterText,
+    progressEntries: resolveShellProgressEntries({
+      projectName: repoLabel || "your project",
+      sourceConnected: hasConnectedRepo,
+      isChecking: phase === "importing" || phase === "checking",
+      blockerText: importSummary.blockerLine.replace(/^Blocker:\s*/i, ""),
+      lastCompletedAction: githubSessionContinuity?.lastCompletedAction || "",
+      nextStep: importSummary.nextLine.replace(/^Next:\s*/i, ""),
+      statusUpdate: importSummary.verificationLine,
+    }),
   });
 
   return `
@@ -3234,6 +3293,8 @@ function renderGithubImportState({ projectSource, loading, status = null, inputT
     detailsHtml: `
           ${githubExecutionCenter}
           ${githubMissingInputFlow}
+        `,
+    technicalDetailsHtml: `
           ${renderVerificationEvidenceSection({ evidenceUnits: githubVerificationEvidence, loading, compact: true })}
           ${githubContinuity}
           ${inspectionSummary}
@@ -3827,26 +3888,6 @@ function renderLiveHealthSection(liveHealth, proof, projectName, loading = {}) {
   `;
 }
 
-function renderDeployProofStatusRow(proofState) {
-  const rows = [
-    { label: "Checked", done: Boolean(proofState?.checked) },
-    { label: "Fixed/Configured", done: Boolean(proofState?.fixedConfigured) },
-    { label: "Deployed/Previewed", done: Boolean(proofState?.deployedPreviewed) },
-    { label: "Waiting input", done: !Boolean(proofState?.waitingInput), warning: Boolean(proofState?.waitingInput) },
-  ];
-  return `<div class="grid gap-2 text-xs md:grid-cols-4">
-    ${rows.map((row) => {
-      const tone = row.warning
-        ? "border-amber-200 bg-amber-50 text-amber-800"
-        : row.done
-          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-          : "border-slate-200 bg-slate-50 text-slate-600";
-      const marker = row.warning ? "!" : row.done ? "✓" : "○";
-      return `<div class="rounded-lg border ${tone} px-2.5 py-2">${marker} ${escapeHtml(row.label)}</div>`;
-    }).join("")}
-  </div>`;
-}
-
 function renderProofActionButton(action, primary = false) {
   if (!action || !action.id) return "";
   const label = escapeHtml(String(action.label || "Continue"));
@@ -4275,94 +4316,6 @@ function renderVerificationEvidenceSection({ evidenceUnits, loading = {}, compac
   `;
 }
 
-function resolveMakerStateLabel({ onboardingDone, makerStarted, makerScreen, doctorReport, launchState, loading, activityLog, projectSource, status }) {
-  const sourceMode = String(projectSource?.mode || "none");
-  if (sourceMode === "github") {
-    const phase = String(projectSource?.phase || "importing");
-    if (phase === "importing") return "Project found";
-    if (phase === "checking") return "Checking app";
-    if (phase === "limited") return "One thing to fix";
-    return "Checking app";
-  }
-  if (sourceMode === "sample") {
-    const phase = String(projectSource?.phase || "demo-idle");
-    if (phase === "demo-running") return "Checking app";
-    if (phase === "demo-ready") return "Ready to launch";
-    return "Project found";
-  }
-  if (!onboardingDone && !makerStarted) return "Project found";
-  const recent = Array.isArray(activityLog) ? activityLog.slice(0, 3) : [];
-  if (recent.some((entry) => String(entry?.status || "") === "error")) return "One thing to fix";
-  if (Boolean(loading?.aiAnalyzeBtn) || !doctorReport) return "Checking app";
-  if (makerScreen === "fixFlow") {
-    return "One thing to fix";
-  }
-  if (Boolean(loading?.fixNextBtn)) return "One thing to fix";
-  if (makerScreen === "updatingDraft" || Boolean(loading?.deployNowBtn) || Boolean(loading?.founderLaunchAppBtn)) return "Ready to launch";
-  const proof = resolveDeployProofState({ projectSource, launchState, status, doctorReport });
-  if (proof.variant === "live_needs_input") return "App is live";
-  if (proof.variant === "preview_needs_input") return "One thing to fix";
-  if (proof.variant === "preview_ready") return "Ready to launch";
-  if (proof.variant === "no_proof_yet" && makerStarted) return "Checking app";
-  if (makerScreen === "liveState" && proof.hasProof) return proof.variant === "live_stable" ? "Keeping it healthy" : "Ready to launch";
-  if (proof.variant === "live_stable") return "Keeping it healthy";
-  if (makerStarted) return "Checking app";
-  return "Project found";
-}
-
-function renderMakerOrientationLayer({
-  onboardingDone,
-  entryIntent,
-  makerStarted,
-  makerScreen,
-  doctorReport,
-  status,
-  launchState,
-  loading,
-  activityLog,
-  resultBanner,
-  projectSource,
-}) {
-  if (makerScreen === "sourceSelection") {
-    return "";
-  }
-  const state = resolveMakerStateLabel({ onboardingDone, makerStarted, makerScreen, doctorReport, launchState, loading, activityLog, projectSource, status });
-  const sourceMode = String(projectSource?.mode || "none");
-  const projectName = resolveProjectName(status);
-  const showProjectName = isUserFacingProjectName(projectName);
-  const sourceName = sourceMode === "github"
-    ? String(projectSource?.repoFullName || "").trim() || "GitHub repository"
-    : sourceMode === "sample"
-      ? "Sample project"
-      : (showProjectName ? projectName : "Current project");
-  const statusLead = state;
-  const lastActivity = Array.isArray(activityLog) && activityLog.length > 0 ? activityLog[0] : null;
-  const recentUpdate = String(lastActivity?.message || resultBanner?.message || "").trim();
-  const showBack = makerScreen !== "localDiagnosis";
-
-  return `
-    <section class="max-w-3xl mx-auto mt-3 px-4">
-      <div class="rounded-xl border border-slate-200 bg-white/90 px-4 py-2.5 shadow-sm">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div class="flex flex-wrap items-center gap-2 text-xs">
-            <span class="font-semibold uppercase tracking-[0.12em] text-slate-500">Context</span>
-            <span class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-700">${escapeHtml(statusLead)}</span>
-            <span class="text-slate-300">•</span>
-            <span class="text-slate-600">Source: ${escapeHtml(sourceMode === "none" ? "not selected" : sourceMode === "local" ? "this project" : sourceMode)}</span>
-            <span class="text-slate-300">•</span>
-            <span class="text-slate-600">Project: ${escapeHtml(sourceName)}</span>
-          </div>
-          <div class="flex items-center gap-2">
-            ${showBack ? '<button id="makerBackBtn" class="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 transition">Back</button>' : ""}
-            <button id="projectHomeInlineBtn" class="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 transition">Project home</button>
-          </div>
-        </div>
-        ${recentUpdate ? `<p class="mt-1 text-xs text-slate-500">Recent update: ${escapeHtml(recentUpdate)}</p>` : ""}
-      </div>
-    </section>
-  `;
-}
-
 function renderFixNextFlow({ doctorReport, loading, showDetails = false, fixProgressStep = 0, proof = null, projectSource = { mode: "local" }, status = null, resultBanner = null, activityLog = [] }) {
   const hasAutofix = getDoctorAutofixActions(doctorReport).length > 0;
   const blocker = normalizeFounderBlockerText(String((doctorReport?.issues || [])[0]?.message || "One setup detail still needs your input."));
@@ -4437,13 +4390,6 @@ function renderFixNextFlow({ doctorReport, loading, showDetails = false, fixProg
     activityLog,
     loading,
   });
-  const stepFlow = resolveFounderStepFlow({
-    makerScreen: "fixFlow",
-    proof: proof || { hasBlockingInput: true, hasProof: false, variant: "no_proof_yet" },
-    projectSource,
-    doctorReport,
-    loading,
-  });
   const executionCenter = renderOperationExecutionCenter({ actions: actionUnits, loading, activityLog, resultBanner });
   const topFixRecoveryUnit = Array.isArray(fixRecoveryUnits)
     ? fixRecoveryUnits.find((unit) => unit?.captureAction?.id && String(unit?.severity || "") !== "optional")
@@ -4490,21 +4436,42 @@ function renderFixNextFlow({ doctorReport, loading, showDetails = false, fixProg
     }),
   ].filter((section) => String(section || "").trim().length > 0).join("");
   const showLegacyDetails = showDetails || manualActions.length > 0 || issues.length > 0;
+  const shellPrimaryAction = resolveFounderShellPrimaryAction({
+    continuity: fixSessionContinuity,
+    fallbackAction: heroRecoveryAction?.id ? heroRecoveryAction : null,
+    recoveryUnit: topFixRecoveryUnit,
+  });
+  const fixContinuityLines = resolveFounderShellContinuityLines({
+    continuity: fixSessionContinuity,
+    recoveryUnit: topFixRecoveryUnit,
+    sourceMode: String(projectSource?.mode || "local"),
+  });
   const shellState = resolveFounderRuntimeShellState({
     stage: heroRecoveryAction?.id ? "Needs you" : "Working",
     projectName: resolveProjectName(status),
     headline: "One blocker is holding this run.",
     subline: String(flowNarration?.justHappened || "Deplo checked your app and found one blocker."),
-    blockerText: blockerTruth,
-    primaryAction: heroRecoveryAction?.id ? heroRecoveryAction : null,
+    currentTruth: resolveFounderCurrentTruth({
+      continuity: fixSessionContinuity,
+      proof: proof || { hasBlockingInput: true, hasProof: false },
+      loading,
+      sourceMode: String(projectSource?.mode || "local"),
+    }),
+    blockerText: toFounderShellBlockerText(blockerTruth, "One setup step still needs your input."),
+    primaryAction: shellPrimaryAction,
     afterThisText: String(topFixRecoveryUnit?.afterResolution || flowNarration?.whatNext || "Deplo continues checking after this step."),
     recoveryCommand: String(topFixRecoveryUnit?.howToResolve?.command || "").trim(),
-    progressEntries: [
-      "Checked what is blocking launch",
-      blockerTruth ? `Found blocker: ${blockerTruth}` : "",
-      showProgress ? `In progress: ${fixSteps[Math.min(fixProgressStep, fixSteps.length - 1)] || "Applying fix"}` : "Waiting for your input",
-      topFixRecoveryUnit?.verificationAfter ? `Next: ${topFixRecoveryUnit.verificationAfter}` : "",
-    ],
+    waitingForText: fixContinuityLines.waitingForText,
+    resumeAfterText: fixContinuityLines.resumeAfterText,
+    progressEntries: resolveShellProgressEntries({
+      projectName: resolveProjectName(status) || "your project",
+      sourceConnected: true,
+      isChecking: false,
+      blockerText: blockerTruth,
+      lastCompletedAction: fixSessionContinuity?.lastCompletedAction || "",
+      actionInProgress: showProgress ? `In progress: ${fixSteps[Math.min(fixProgressStep, fixSteps.length - 1)] || "Applying fix"}` : "Waiting for your input",
+      nextStep: String(topFixRecoveryUnit?.verificationAfter || topFixRecoveryUnit?.afterResolution || "").trim(),
+    }),
   });
   const detailsHtml = [
     executionCenter,
@@ -4525,6 +4492,10 @@ function renderFixNextFlow({ doctorReport, loading, showDetails = false, fixProg
           </div>
         </div>`
       : "",
+    renderOperatorSessionContinuity({ continuity: fixSessionContinuity, loading, compact: true }),
+  ].filter((section) => String(section || "").trim().length > 0).join("");
+
+  const technicalDetailsHtml = [
     detailSections,
     showLegacyDetails ? `<div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2">
       <div class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">What is still missing</div>
@@ -4541,6 +4512,7 @@ function renderFixNextFlow({ doctorReport, loading, showDetails = false, fixProg
     shellState,
     loading,
     detailsHtml,
+    technicalDetailsHtml,
   })}
     </div>
   `;
@@ -4733,10 +4705,11 @@ function resolveMakerStage({ makerStarted, launchState, status, makerScreen, onb
   return "Working";
 }
 
-function renderConsoleShell({ status, expertMode, makerStarted, launchState, makerScreen, onboardingDone, entryIntent, projectSource, doctorReport, hasChosenProjectSource }) {
-  const projectName = resolveProjectName(status);
-  const showProjectName = isUserFacingProjectName(projectName);
-  const stage = resolveMakerStage({ makerStarted, launchState, status, makerScreen, onboardingDone, entryIntent, projectSource, doctorReport });
+function renderConsoleShell({ status, expertMode, makerStarted, launchState, makerScreen, onboardingDone, entryIntent, projectSource, doctorReport, hasChosenProjectSource, previewProjectName, previewStage }) {
+  const hasPreviewOverride = Boolean(previewProjectName || previewStage);
+  const projectName = previewProjectName || resolveProjectName(status);
+  const showProjectName = hasPreviewOverride || isUserFacingProjectName(projectName);
+  const stage = previewStage || resolveMakerStage({ makerStarted, launchState, status, makerScreen, onboardingDone, entryIntent, projectSource, doctorReport });
   const sourceMode = String(projectSource?.mode || "none");
   const sourceLabel = !hasChosenProjectSource || sourceMode === "none"
     ? "Choose source"
@@ -4745,14 +4718,26 @@ function renderConsoleShell({ status, expertMode, makerStarted, launchState, mak
     : sourceMode === "sample"
       ? "Sample project"
       : "Local project";
-  const sourceName = !hasChosenProjectSource || sourceMode === "none"
+  const sourceName = hasPreviewOverride
+    ? projectName
+    : !hasChosenProjectSource || sourceMode === "none"
     ? ""
     : sourceMode === "github"
     ? String(projectSource?.repoFullName || "").trim()
     : sourceMode === "sample"
       ? "Sample demo"
       : (showProjectName ? projectName : "");
-  const inSourceSelection = !hasChosenProjectSource || makerScreen === "sourceSelection";
+  const inSourceSelection = hasPreviewOverride
+    ? (projectName === "Choose source")
+    : (!hasChosenProjectSource || makerScreen === "sourceSelection");
+  const stageBadgeMap = {
+    "Starting":  "border-slate-300/70 bg-white text-slate-700",
+    "Needs you": "border-amber-300/70 bg-amber-50 text-amber-800",
+    "Working":   "border-sky-300/70 bg-sky-50 text-sky-800",
+    "Live":      "border-emerald-300/70 bg-emerald-50 text-emerald-800",
+    "Watching":  "border-emerald-300/70 bg-emerald-50 text-emerald-800",
+  };
+  const stageBadgeClasses = stageBadgeMap[stage] || stageBadgeMap["Starting"];
   return `
     <header class="sticky top-0 z-40 border-b border-slate-200/80 bg-slate-50/95 backdrop-blur">
       <div class="max-w-6xl mx-auto px-4 py-3">
@@ -4766,7 +4751,7 @@ function renderConsoleShell({ status, expertMode, makerStarted, launchState, mak
           </div>
           <div class="flex items-center gap-2">
             ${!inSourceSelection ? '<button id="startOverBtn" class="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition">New project</button>' : ""}
-            <span class="rounded-full border border-slate-300/70 bg-white px-2.5 py-1 text-xs text-slate-700">${escapeHtml(inSourceSelection ? "Starting" : stage)}</span>
+            <span class="rounded-full px-2.5 py-1 text-xs ${stageBadgeClasses}">${escapeHtml(inSourceSelection ? "Starting" : stage)}</span>
           </div>
         </div>
       </div>
@@ -4788,103 +4773,296 @@ function renderExpertToolsLauncher(expertMode) {
   `;
 }
 
-function renderMakerPipelineStrip({ makerStarted, launchState, status, doctorReport, projectSource }) {
-  const sourceMode = String(projectSource?.mode || "none");
-  if (sourceMode === "sample") {
-    const phase = String(projectSource?.phase || "demo-idle");
-    const activeIndex = phase === "demo-running" ? 1 : phase === "demo-ready" ? 3 : 0;
-    const steps = ["Scan", "Fix", "Deploy", "Live"].map((label, index) => ({
-      label,
-      active: index === activeIndex,
-      done: index < activeIndex,
-    }));
-    return `
-      <div class="sticky top-[57px] z-30 border-b border-slate-200/70 bg-white/90 backdrop-blur">
-        <div class="max-w-6xl mx-auto px-4 py-2">
-        <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
-          <span class="text-slate-500 mr-1">Flow</span>
-          ${steps.map((step) => `
-            <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${step.active
-      ? "bg-sky-100 text-sky-800 border border-sky-200/80"
-      : step.done
-        ? "bg-emerald-100 text-emerald-800 border border-emerald-200/80"
-        : "bg-slate-100 text-slate-600 border border-slate-200/80"}">
-              <span>${step.done ? "✓" : step.active ? "●" : "○"}</span>
-              <span>${step.label}</span>
-            </span>
-          `).join("")}
-        </div>
-        </div>
-      </div>
-    `;
-  }
-  if (sourceMode === "github") {
-    const phase = String(projectSource?.phase || "importing");
-    const activeIndex = 0;
-    const steps = ["Scan", "Fix", "Deploy", "Live"].map((label, index) => ({
-      label,
-      active: index === activeIndex,
-      done: index < activeIndex,
-    }));
-    return `
-      <div class="sticky top-[57px] z-30 border-b border-slate-200/70 bg-white/90 backdrop-blur">
-        <div class="max-w-6xl mx-auto px-4 py-2">
-        <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
-          <span class="text-slate-500 mr-1">Flow</span>
-          ${steps.map((step) => `
-            <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${step.active
-      ? "bg-sky-100 text-sky-800 border border-sky-200/80"
-      : step.done
-        ? "bg-emerald-100 text-emerald-800 border border-emerald-200/80"
-        : "bg-slate-100 text-slate-600 border border-slate-200/80"}">
-              <span>${step.done ? "✓" : step.active ? "●" : "○"}</span>
-              <span>${step.label}</span>
-            </span>
-          `).join("")}
-        </div>
-        </div>
-      </div>
-    `;
-  }
-  const proof = resolveDeployProofState({ projectSource, launchState, status, doctorReport });
-  const steps = [
-    { label: "Scan", done: Boolean(proof.checked), active: !proof.checked },
-    {
-      label: "Fix",
-      done: Boolean(proof.fixedConfigured),
-      active: proof.waitingInput,
-    },
-    {
-      label: "Deploy",
-      done: Boolean(proof.deployedPreviewed),
-      active: proof.variant === "no_proof_yet" && !proof.waitingInput && proof.checked,
-    },
-    {
-      label: "Live",
-      done: proof.variant === "live_stable" || proof.variant === "live_needs_input",
-      active: proof.variant === "live_stable",
-      warning: proof.variant === "live_needs_input",
-    },
-  ];
+const FOUNDER_SHELL_PREVIEW_STATES = [
+  "source_selection",
+  "starting",
+  "needs_input",
+  "waiting_for_you",
+  "checking_again",
+  "continuing",
+  "working",
+  "live_needs_input",
+  "live_stable",
+];
+
+function getFounderShellPreviewStateFromLocation() {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.search);
+  const value = String(params.get("shellPreview") || "").trim();
+  return FOUNDER_SHELL_PREVIEW_STATES.includes(value) ? value : "";
+}
+
+function getPreviewShellOverrides(previewState) {
+  const map = {
+    source_selection: { projectName: "Choose source", stage: "Starting" },
+    starting:         { projectName: "Acme app",      stage: "Starting" },
+    needs_input:      { projectName: "Acme app",      stage: "Needs you" },
+    waiting_for_you:  { projectName: "Acme app",      stage: "Needs you" },
+    checking_again:   { projectName: "Acme app",      stage: "Working" },
+    continuing:       { projectName: "Acme app",      stage: "Working" },
+    working:          { projectName: "Acme app",      stage: "Working" },
+    live_needs_input: { projectName: "Acme app",      stage: "Live" },
+    live_stable:      { projectName: "Acme app",      stage: "Watching" },
+  };
+  return map[previewState] || { projectName: "Acme app", stage: "Starting" };
+}
+
+function renderFounderShellPreviewSwitcher(activeState = "") {
+  const active = String(activeState || "").trim();
+  const labels = {
+    source_selection: "Source selection",
+    starting: "Starting",
+    needs_input: "Needs input",
+    waiting_for_you: "Waiting for you",
+    checking_again: "Checking again",
+    continuing: "Continuing",
+    working: "Checking again",
+    live_needs_input: "Live needs input",
+    live_stable: "Live stable",
+  };
   return `
-    <div class="sticky top-[57px] z-30 border-b border-slate-200/70 bg-white/90 backdrop-blur">
-      <div class="max-w-6xl mx-auto px-4 py-2">
-      <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
-        <span class="text-slate-500 mr-1">Flow</span>
-        ${steps.map((step) => `
-          <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${step.active
-    ? (step.warning ? "bg-amber-100 text-amber-800 border border-amber-200/80" : "bg-sky-100 text-sky-800 border border-sky-200/80")
-    : step.warning
-      ? "bg-amber-100 text-amber-800 border border-amber-200/80"
-    : step.done
-      ? "bg-emerald-100 text-emerald-800 border border-emerald-200/80"
-      : "bg-slate-100 text-slate-600 border border-slate-200/80"}">
-            <span>${step.warning ? "!" : step.done ? "✓" : step.active ? "●" : "○"}</span>
-            <span>${step.label}</span>
-          </span>
-        `).join("")}
+    <section class="sticky top-[53px] z-30 max-w-3xl mx-auto p-4 pb-0">
+      <div class="rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-3 space-y-2 backdrop-blur">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div class="text-[11px] uppercase tracking-[0.12em] font-semibold text-sky-700">Internal preview</div>
+            <p class="text-xs text-sky-800">Founder shell state preview is active. This only affects the local console view.</p>
+            ${active ? `<p class="text-[11px] font-medium text-sky-900 mt-1">Preview mode: <strong>${escapeHtml(active)}</strong></p>` : ""}
+          </div>
+          <button data-shell-preview-clear="true" class="rounded-full border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-50 transition">Exit preview</button>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          ${FOUNDER_SHELL_PREVIEW_STATES.map((state) => {
+            const isActive = state === active;
+            return `<button data-shell-preview-state="${escapeHtml(state)}" class="rounded-full px-3 py-1.5 text-xs font-medium transition ${isActive ? "bg-sky-700 text-white" : "border border-sky-300 bg-white text-sky-800 hover:bg-sky-50"}">${escapeHtml(labels[state] || state)}</button>`;
+          }).join("")}
+        </div>
       </div>
+    </section>
+  `;
+}
+
+function renderFounderShellPreview(state, loading = {}) {
+  const previewState = String(state || "");
+  if (previewState === "source_selection") {
+    return `
+      <div class="max-w-3xl mx-auto p-4 space-y-4" id="appBody">
+        <div class="rounded-lg border border-sky-300 bg-sky-100 px-3 py-2 text-xs font-medium text-sky-900 text-center">
+          Preview mode: <strong>source_selection</strong> &mdash; This is a seeded preview, not live data.
+        </div>
+        ${renderOnboardingScreen(null, false)}
       </div>
+    `;
+  }
+
+  const sharedDetails = `
+    <div class="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
+      This preview uses the real founder shell layout with seeded founder-facing state.
+    </div>
+  `;
+
+  const previews = {
+    starting: {
+      shellState: resolveFounderRuntimeShellState({
+        stage: "Starting",
+        projectName: "Acme app",
+        headline: "Checking your project",
+        subline: "We found your app and started checking what is blocking launch.",
+        currentTruth: "Deplo is running initial checks. No action needed from you yet.",
+        currentTruthVariant: "working",
+        blockerText: "",
+        primaryAction: { id: "aiAnalyzeBtn", label: "Check again" },
+        afterThisText: "Deplo will continue checking your app.",
+        progressEntries: [
+          "Connected Acme app",
+          "Checking what is blocking launch",
+          "Deplo is still checking what is ready.",
+        ],
+      }),
+      detailsHtml: sharedDetails,
+      technicalDetailsHtml: "",
+    },
+    needs_input: {
+      shellState: resolveFounderRuntimeShellState({
+        stage: "Needs you",
+        projectName: "Acme app",
+        headline: "One step needs your input.",
+        subline: "Deplo checked your app and found one blocker that needs you to act.",
+        currentTruth: "Deplo found a blocker and is waiting for you.",
+        currentTruthVariant: "waiting",
+        blockerText: "Deploy platform access needs refresh.",
+        primaryAction: { id: "reviewMissingBtn", label: "I finished this step" },
+        afterThisText: "Deplo will check your app again.",
+        recoveryCommand: "vercel login",
+        waitingForText: "deploy platform access",
+        resumeAfterText: "Once you finish this step, Deplo will continue automatically.",
+        progressEntries: [
+          "Connected Acme app",
+          "Checked what is blocking launch",
+          "Found one blocker: Deploy platform access needs refresh.",
+          "Waiting for: deploy platform access",
+        ],
+      }),
+      detailsHtml: `
+        <div class="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-1">
+          <div class="text-xs font-semibold text-slate-700">What Deplo is waiting for</div>
+          <p class="text-sm text-slate-700">Finish the sign-in step, then continue with Deplo.</p>
+        </div>
+      `,
+      technicalDetailsHtml: "",
+    },
+    waiting_for_you: {
+      shellState: resolveFounderRuntimeShellState({
+        stage: "Needs you",
+        projectName: "Acme app",
+        headline: "Deplo is paused until you finish a manual step.",
+        subline: "A manual step is required before Deplo can continue checking.",
+        currentTruth: "A manual step is required before Deplo can continue: database access confirmation.",
+        currentTruthVariant: "waiting",
+        blockerText: "Database access still needs confirmation.",
+        primaryAction: { id: "reviewMissingBtn", label: "I finished this step" },
+        afterThisText: "Deplo will keep going automatically.",
+        recoveryCommand: "supabase link",
+        waitingForText: "database access confirmation",
+        resumeAfterText: "Complete this step, then Deplo will resume from where it stopped.",
+        progressEntries: [
+          "Connected Acme app",
+          "Checked what is blocking launch",
+          "Found one blocker: Database access still needs confirmation.",
+          "Waiting for: database access confirmation",
+        ],
+      }),
+      detailsHtml: sharedDetails,
+      technicalDetailsHtml: "",
+    },
+    checking_again: {
+      shellState: resolveFounderRuntimeShellState({
+        stage: "Working",
+        projectName: "Acme app",
+        headline: "Deplo is re-checking your app.",
+        subline: "You completed the required step, and Deplo picked the run back up.",
+        currentTruth: "You completed a step. Deplo is verifying the result.",
+        currentTruthVariant: "working",
+        blockerText: "",
+        primaryAction: { id: "verifyLiveAppBtn", label: "Refresh check" },
+        afterThisText: "The result will update right here.",
+        resumeAfterText: "Deplo picked up from the latest step and is updating the result now.",
+        progressEntries: [
+          "Connected Acme app",
+          "Checked what is blocking launch",
+          "Last completed: You finished the required step",
+          "Re-checking after your last step",
+        ],
+      }),
+      detailsHtml: sharedDetails,
+      technicalDetailsHtml: "",
+    },
+    continuing: {
+      shellState: resolveFounderRuntimeShellState({
+        stage: "Working",
+        projectName: "Acme app",
+        headline: "Deplo is resuming from where it left off.",
+        subline: "The blocker is cleared, and Deplo is picking up from the last step.",
+        currentTruth: "The blocker is cleared. Deplo is picking up from the last step.",
+        currentTruthVariant: "working",
+        blockerText: "",
+        primaryAction: { id: "runFixNowBtn", label: "Continue with Deplo" },
+        afterThisText: "Deplo will try to finish setup.",
+        resumeAfterText: "Deplo can keep going from the latest step.",
+        progressEntries: [
+          "Connected Acme app",
+          "Checked what is blocking launch",
+          "Last completed: Blocker cleared",
+          "Resuming setup from last cleared blocker",
+        ],
+      }),
+      detailsHtml: sharedDetails,
+      technicalDetailsHtml: "",
+    },
+    working: {
+      shellState: resolveFounderRuntimeShellState({
+        stage: "Working",
+        projectName: "Acme app",
+        headline: "Deplo is running the next setup step.",
+        subline: "The required step is done, and Deplo is moving to the next item.",
+        currentTruth: "Deplo is actively working. No action needed from you.",
+        currentTruthVariant: "working",
+        blockerText: "",
+        primaryAction: { id: "runFixNowBtn", label: "Check progress" },
+        afterThisText: "Deplo will show the result when it finishes.",
+        resumeAfterText: "Deplo picked up from the latest step.",
+        progressEntries: [
+          "Connected Acme app",
+          "Checked what is blocking launch",
+          "Last completed: Required step done",
+          "Running next setup step",
+        ],
+      }),
+      detailsHtml: sharedDetails,
+      technicalDetailsHtml: "",
+    },
+    live_needs_input: {
+      shellState: resolveFounderRuntimeShellState({
+        stage: "Live",
+        projectName: "Acme app",
+        headline: "Your app is live. One setup step still needs your input.",
+        subline: "Your app is already online, but one remaining setup step still needs you to act.",
+        currentTruth: "Your app is live, but one setup step still needs your input.",
+        currentTruthVariant: "live",
+        deployUrl: "https://acme-app.vercel.app",
+        blockerText: "Database access still needs confirmation.",
+        primaryAction: { id: "runFixNowBtn", label: "I finished this step" },
+        afterThisText: "We’ll check whether everything is ready.",
+        recoveryCommand: "supabase login",
+        waitingForText: "database access confirmation",
+        resumeAfterText: "Once this is done, Deplo will continue automatically.",
+        progressEntries: [
+          "Connected Acme app",
+          "Checked what is blocking launch",
+          "Your app is live",
+          "Found one blocker: Database access still needs confirmation.",
+          "Waiting for: database access confirmation",
+        ],
+      }),
+      detailsHtml: sharedDetails,
+      technicalDetailsHtml: "",
+    },
+    live_stable: {
+      shellState: resolveFounderRuntimeShellState({
+        stage: "Watching",
+        projectName: "Acme app",
+        headline: "Your app is live.",
+        subline: "Nothing else is needed right now.",
+        currentTruth: "Nothing else is needed right now.",
+        currentTruthVariant: "live",
+        deployUrl: "https://acme-app.vercel.app",
+        blockerText: "",
+        primaryAction: { id: "verifyLiveAppBtn", label: "Check again" },
+        afterThisText: "Deplo will continue checking your app.",
+        progressEntries: [
+          "Connected Acme app",
+          "Checked what is blocking launch",
+          "Your app is live",
+          "Watching app health on request",
+        ],
+      }),
+      detailsHtml: sharedDetails,
+      technicalDetailsHtml: "",
+    },
+  };
+
+  const preview = previews[previewState] || previews.starting;
+  return `
+    <div class="max-w-3xl mx-auto p-4 space-y-4" id="appBody">
+      <div class="rounded-lg border border-sky-300 bg-sky-100 px-3 py-2 text-xs font-medium text-sky-900 text-center">
+        Preview mode: <strong>${escapeHtml(previewState || "starting")}</strong> &mdash; This is a seeded preview, not live data.
+      </div>
+      ${renderFounderRuntimeShell({
+        shellState: preview.shellState,
+        loading,
+        detailsHtml: preview.detailsHtml,
+        technicalDetailsHtml: preview.technicalDetailsHtml,
+      })}
     </div>
   `;
 }
@@ -5047,6 +5225,11 @@ function renderFirstVersionContent({ status, executionPlan, launchState, doctorR
   const topAction = topRecoveryUnit?.captureAction?.id
     ? topRecoveryUnit.captureAction
     : (proof?.primaryAction?.id ? proof.primaryAction : null);
+  const firstVersionContinuityLines = resolveFounderShellContinuityLines({
+    continuity: firstVersionContinuity,
+    recoveryUnit: topRecoveryUnit,
+    sourceMode: String(projectSource?.mode || "local"),
+  });
   const shellState = resolveFounderRuntimeShellState({
     stage: proof.variant === "live_stable" ? "Watching" : "Live",
     projectName: projectDisplay,
@@ -5054,17 +5237,33 @@ function renderFirstVersionContent({ status, executionPlan, launchState, doctorR
       ? "Your app is live. One setup step is still needed."
       : "Your app is live.",
     subline: proof.founderMessage,
+    currentTruth: resolveFounderCurrentTruth({
+      continuity: firstVersionContinuity,
+      proof,
+      loading,
+      sourceMode: String(projectSource?.mode || "local"),
+    }),
     deployUrl: firstVersionUrl,
-    blockerText: topRecoveryUnit?.title || "",
-    primaryAction: topAction,
+    blockerText: toFounderShellBlockerText(topRecoveryUnit?.title || "", ""),
+    primaryAction: resolveFounderShellPrimaryAction({
+      continuity: firstVersionContinuity,
+      fallbackAction: topAction,
+      recoveryUnit: topRecoveryUnit,
+    }),
     afterThisText: String(topRecoveryUnit?.afterResolution || liveHealth?.verificationResult || "Deplo can re-check app health after this step."),
     recoveryCommand: String(topRecoveryUnit?.howToResolve?.command || "").trim(),
-    progressEntries: [
-      `Connected ${projectDisplay}`,
-      "Checked launch readiness",
-      "Published your app",
-      watchMode?.whatChanged ? `Update: ${watchMode.whatChanged}` : "Keeping live confidence current",
-    ],
+    waitingForText: firstVersionContinuityLines.waitingForText,
+    resumeAfterText: firstVersionContinuityLines.resumeAfterText,
+    progressEntries: resolveShellProgressEntries({
+      projectName: projectDisplay,
+      sourceConnected: true,
+      isChecking: false,
+      blockerText: topRecoveryUnit?.title || "",
+      appLive: true,
+      lastCompletedAction: firstVersionContinuity?.lastCompletedAction || "",
+      nextStep: String(topRecoveryUnit?.afterResolution || "").trim(),
+      statusUpdate: watchMode?.whatChanged ? `Update: ${watchMode.whatChanged}` : "Watching app health on request",
+    }),
     healthState: String(watchMode?.watchState || ""),
     previewUrl: firstVersionUrl,
   });
@@ -5078,6 +5277,8 @@ function renderFirstVersionContent({ status, executionPlan, launchState, doctorR
     detailsHtml: `
       ${renderLiveHealthSection(liveHealth, proof, projectDisplay, loading)}
       ${renderWatchModeSection({ watch: watchMode, loading, compact: true })}
+    `,
+    technicalDetailsHtml: `
       ${renderVerificationEvidenceSection({ evidenceUnits: firstVersionEvidence, loading, compact: true })}
       <ul class="space-y-1.5 text-sm text-slate-600">
         ${included.map((line) => `<li class="flex items-start gap-2"><span class="text-emerald-600 mt-0.5">✓</span> ${escapeHtml(line)}</li>`).join("")}
@@ -5252,6 +5453,7 @@ function expertViewHtml({
   chatActions,
   chatEmptyMessage,
   instruction,
+  shellPreviewState,
 }) {
   return [
     '<section class="max-w-6xl mx-auto p-4 space-y-6">',
@@ -5265,6 +5467,7 @@ function expertViewHtml({
     "</div>",
     "</section>",
     '<div class="space-y-4">',
+    renderFounderShellPreviewSwitcher(shellPreviewState),
     OperationTimeline({ entries: timelineEntries, outcome: timelineOutcome, expandedIds: expandedTimelineIds, doctorReport }),
     renderDetectedStack(status),
     StatusSection({ status }),
@@ -5418,6 +5621,7 @@ function App() {
   const [activityLog, setActivityLog] = useState([]);
   const [expandedTimelineIds, setExpandedTimelineIds] = useState(new Set());
   const [expertMode, setExpertMode] = useState(false);
+  const [shellPreviewState, setShellPreviewState] = useState(() => getFounderShellPreviewStateFromLocation());
   const [makerStarted, setMakerStarted] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(true);
   const [hasChosenProjectSource, setHasChosenProjectSource] = useState(true);
@@ -5442,6 +5646,7 @@ function App() {
   const [fixDetailsVisible, setFixDetailsVisible] = useState(false);
   const [fixProgressStep, setFixProgressStep] = useState(0);
   const makerScreen = visibleMakerScreen;
+  const previewModeLocked = Boolean(shellPreviewState);
   // Guard: only explicit user clicks may change the screen.
   // This wrapper prevents any background process, polling callback, or
   // useEffect from silently transitioning away from sourceSelection.
@@ -5681,6 +5886,9 @@ function App() {
   }
 
   useEffect(() => {
+    if (previewModeLocked) {
+      return undefined;
+    }
     Promise.all([loadStatus(), loadSuggestions(), loadCapabilities(), loadDoctorReport()]).catch((error) => setOutput(error.message));
     const timer = setInterval(() => {
       Promise.all([loadStatus(), loadSuggestions(), loadCapabilities(), loadDoctorReport()]).catch(() => {
@@ -5688,9 +5896,12 @@ function App() {
       });
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [previewModeLocked]);
 
   useEffect(() => {
+    if (previewModeLocked) {
+      return undefined;
+    }
     loadOperations().catch(() => {
       // Keep previous operations list when polling fails.
     });
@@ -5700,7 +5911,7 @@ function App() {
       });
     }, 2000);
     return () => clearInterval(timer);
-  }, []);
+  }, [previewModeLocked]);
 
   useEffect(() => {
     const outputPanel = document.getElementById("outputPanel");
@@ -5710,6 +5921,17 @@ function App() {
   }, [output]);
 
   useEffect(() => {
+    const onPopState = () => {
+      setShellPreviewState(getFounderShellPreviewStateFromLocation());
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (previewModeLocked) {
+      return undefined;
+    }
     if (projectSource.mode !== "local") {
       return;
     }
@@ -5717,9 +5939,12 @@ function App() {
       ...prev,
       branch: String(status?.git?.branch || ""),
     }));
-  }, [status?.git?.branch, projectSource.mode]);
+  }, [status?.git?.branch, projectSource.mode, previewModeLocked]);
 
   useEffect(() => {
+    if (previewModeLocked) {
+      return undefined;
+    }
     if (makerScreen !== "changeRequest") {
       return;
     }
@@ -5730,9 +5955,12 @@ function App() {
       }
     }, 50);
     return () => clearTimeout(timer);
-  }, [makerScreen]);
+  }, [makerScreen, previewModeLocked]);
 
   useEffect(() => {
+    if (previewModeLocked) {
+      return undefined;
+    }
     if (makerScreen !== "updatingDraft") {
       return;
     }
@@ -5745,9 +5973,12 @@ function App() {
       setTimeout(() => setUpdateReady(true), 2500),
     ];
     return () => timers.forEach((timer) => clearTimeout(timer));
-  }, [makerScreen, lastSubmittedChangeRequest]);
+  }, [makerScreen, lastSubmittedChangeRequest, previewModeLocked]);
 
   useEffect(() => {
+    if (previewModeLocked) {
+      return undefined;
+    }
     if (makerScreen !== "fixFlow" || !loading?.runFixNowBtn) {
       setFixProgressStep(0);
       return;
@@ -5760,9 +5991,12 @@ function App() {
       setTimeout(() => setFixProgressStep(4), 2300),
     ];
     return () => timers.forEach((timer) => clearTimeout(timer));
-  }, [makerScreen, loading?.runFixNowBtn]);
+  }, [makerScreen, loading?.runFixNowBtn, previewModeLocked]);
 
   useEffect(() => {
+    if (previewModeLocked) {
+      return undefined;
+    }
     if (makerScreen !== "localInspection") {
       return;
     }
@@ -5770,7 +6004,7 @@ function App() {
       setMakerScreen("localDiagnosis");
     }, 1200);
     return () => clearTimeout(timer);
-  }, [makerScreen]);
+  }, [makerScreen, previewModeLocked]);
 
   useEffect(() => {
     const root = document.getElementById("appBody");
@@ -5834,6 +6068,24 @@ function markAction(label, outcome, details) {
   if (details) {
     setOutput(details);
   }
+  }
+
+  function updateShellPreview(nextState = "") {
+    const normalized = FOUNDER_SHELL_PREVIEW_STATES.includes(String(nextState || "").trim())
+      ? String(nextState || "").trim()
+      : "";
+    const url = new URL(window.location.href);
+    if (normalized) {
+      url.searchParams.set("shellPreview", normalized);
+    } else {
+      url.searchParams.delete("shellPreview");
+    }
+    window.history.replaceState({}, "", url.toString());
+    if (normalized) {
+      setExpertMode(false);
+      setOutput(`Preview mode locked: ${normalized}`);
+    }
+    setShellPreviewState(normalized);
   }
 
   async function runAction(buttonId, label, work) {
@@ -6241,6 +6493,12 @@ function markAction(label, outcome, details) {
       }
       const resolvedTarget = rawTarget.closest("[id], [data-onboarding-action], [data-command-suggestion], [data-suggestion-kind], [data-copy-text], [data-doctor-action-id], [data-operator-command], [data-idea-seed], [data-suggestion-id], [data-macro-id], [data-timeline-toggle], [data-retry-step-index]");
       const target = resolvedTarget instanceof HTMLElement ? resolvedTarget : rawTarget;
+      const previewSwitchTarget = target.dataset?.shellPreviewState || target.dataset?.shellPreviewClear;
+      const copyText = String(target.dataset?.copyText || "");
+      if (previewModeLocked && !previewSwitchTarget && !copyText) {
+        setOutput(`Preview mode locked: ${shellPreviewState}`);
+        return;
+      }
       if (!target.id) {
         // Card-level clicks delegate to the matching button by id.
         // The id-based handlers below are the single source of truth for each action.
@@ -6345,7 +6603,6 @@ function markAction(label, outcome, details) {
           return;
         }
 
-        const copyText = String(target.dataset?.copyText || "");
         if (copyText) {
           await navigator.clipboard.writeText(copyText);
           setOutput(`Copied command: ${copyText}`);
@@ -6427,6 +6684,16 @@ function markAction(label, outcome, details) {
             }
           }
           startOverMakerFlow();
+          return;
+        }
+
+        if (target.dataset?.shellPreviewState) {
+          updateShellPreview(String(target.dataset.shellPreviewState || ""));
+          return;
+        }
+
+        if (target.dataset?.shellPreviewClear) {
+          updateShellPreview("");
           return;
         }
 
@@ -7335,7 +7602,8 @@ function markAction(label, outcome, details) {
     const hasJobs = Array.isArray(operations) && operations.length > 0;
     const timelineEntries = buildTimeline(activityLog, operations, executionPlan, prodConfirmChecked);
     const timelineOutcome = computeOutcome(timelineEntries);
-    const shell = renderConsoleShell({ status, expertMode, makerStarted, launchState, makerScreen, onboardingDone, entryIntent, projectSource, doctorReport, hasChosenProjectSource });
+    const previewOverrides = shellPreviewState ? getPreviewShellOverrides(shellPreviewState) : {};
+    const shell = renderConsoleShell({ status, expertMode, makerStarted, launchState, makerScreen, onboardingDone, entryIntent, projectSource, doctorReport, hasChosenProjectSource, previewProjectName: previewOverrides.projectName, previewStage: previewOverrides.stage });
     const expertToolsLauncher = renderExpertToolsLauncher(expertMode);
     const expertToolsPanel = expertMode
       ? expertViewHtml({
@@ -7354,8 +7622,19 @@ function markAction(label, outcome, details) {
           chatActions,
           chatEmptyMessage,
           instruction,
+          shellPreviewState,
         })
       : "";
+    const previewBanner = shellPreviewState ? renderFounderShellPreviewSwitcher(shellPreviewState) : "";
+    if (shellPreviewState) {
+      return [
+        shell,
+        previewBanner,
+        renderFounderShellPreview(shellPreviewState, loading),
+        expertToolsLauncher,
+        expertToolsPanel,
+      ].join("");
+    }
     if (makerScreen === "liveState") {
       return [
         shell,
@@ -7468,6 +7747,7 @@ function markAction(label, outcome, details) {
     updateReady,
     fixDetailsVisible,
     fixProgressStep,
+    shellPreviewState,
   ]);
 
   return React.createElement("div", { dangerouslySetInnerHTML: { __html: html } });
